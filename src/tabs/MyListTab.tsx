@@ -10,7 +10,7 @@ import {
 } from 'react-native'
 import { Heart, Share2, Star, Trash2, X } from 'lucide-react-native'
 import { fetchAnimeById } from '../api/anilist'
-import { addSwipe, loadSwipes } from '../storage'
+import { loadSwipes, removeSwipe } from '../storage'
 import { styles } from '../styles'
 import type { Anime, SwipeRecord } from '../types'
 
@@ -45,7 +45,7 @@ export function MyListTab({ onAnimePress }: Props) {
   }, [])
 
   const handleRemove = async (animeId: number) => {
-    await addSwipe({ animeId, result: 'skip', swipedAt: new Date().toISOString() })
+    await removeSwipe(animeId)
     await load()
   }
 
