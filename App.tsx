@@ -5,6 +5,7 @@ import { loadPrefs, syncLocalToServer } from './src/storage'
 import { apiLogout, apiMe, getToken, type AuthResponse } from './src/api/otakuApi'
 import { styles } from './src/styles'
 import { AuthScreen } from './src/components/AuthScreen'
+import { AnimeDetailModal } from './src/components/AnimeDetailModal'
 import { OnboardingScreen } from './src/components/OnboardingScreen'
 import { HomeTab } from './src/tabs/HomeTab'
 import { ExploreTab } from './src/tabs/ExploreTab'
@@ -27,6 +28,7 @@ export default function App() {
   const [user, setUser]       = useState<AuthResponse | null>(null)
   const [activeTab, setActiveTab] = useState<TabKey>('home')
   const [showUserMenu, setShowUserMenu] = useState(false)
+  const [selectedAnime, setSelectedAnime] = useState<Anime | null>(null)
 
   // 앱 시작 시 토큰·취향 복원
   useEffect(() => {
@@ -69,8 +71,8 @@ export default function App() {
     setShowUserMenu(false)
   }
 
-  const handleAnimePress = (_anime: Anime) => {
-    // TODO: 상세 모달
+  const handleAnimePress = (anime: Anime) => {
+    setSelectedAnime(anime)
   }
 
   // ── 로딩 ──
@@ -208,6 +210,8 @@ export default function App() {
       {activeTab === 'explore' ? <ExploreTab onAnimePress={handleAnimePress} /> : null}
       {activeTab === 'swipe'   ? <SwipeTab   favoriteGenres={prefs?.favoriteGenres ?? []} onAnimePress={handleAnimePress} /> : null}
       {activeTab === 'mylist'  ? <MyListTab  onAnimePress={handleAnimePress} /> : null}
+
+      <AnimeDetailModal anime={selectedAnime} onClose={() => setSelectedAnime(null)} />
     </SafeAreaView>
   )
 }

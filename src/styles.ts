@@ -168,6 +168,7 @@ export const styles = StyleSheet.create({
   hCardBody: { padding: 8, gap: 3 },
   hCardTitle: { color: C.ink, fontSize: 12, fontWeight: '800', lineHeight: 17 },
   hCardMeta: { color: C.inkMuted, fontSize: 10, fontWeight: '600' },
+  hCardLikeBadge: { position: 'absolute', top: 6, right: 6, backgroundColor: 'rgba(124,58,237,0.85)', borderRadius: 999, padding: 4 },
 
   // ── Ranking Row ───────────────────────────────────────────────────────────
   rankingRow: {
@@ -208,6 +209,11 @@ export const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, ...shadow.md,
   },
   shareBtnText: { color: C.accentGlow, fontSize: 14, fontWeight: '800' },
+
+  // ── Small Icon Buttons (리스트 아이템용) ──────────────────────────────────
+  iconBtn: { borderRadius: 8, padding: 8 },
+  iconBtnLike: { backgroundColor: C.accentSoft },
+  iconBtnDislike: { backgroundColor: C.redSoft },
 
   // ── My List Tabs ──────────────────────────────────────────────────────────
   listTabRow: { flexDirection: 'row', gap: 6 },

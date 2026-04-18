@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   FlatList,
@@ -10,9 +10,10 @@ import {
 } from 'react-native'
 import { BarChart2, Search, Star, TrendingUp, Zap } from 'lucide-react-native'
 import { fetchRanking, searchAnime } from '../api/anilist'
+import { translateAnimeList } from '../api/translate'
 import { getSwipeMap } from '../storage'
 import { styles } from '../styles'
-import type { Anime, RankingSort } from '../types'
+import type { Anime, RankingSort, SwipeResult } from '../types'
 
 type Props = {
   onAnimePress: (anime: Anime) => void
@@ -29,13 +30,13 @@ export function ExploreTab({ onAnimePress }: Props) {
   const [searchQuery, setSearchQuery] = useState('')
   const [results, setResults] = useState<Anime[]>([])
   const [loading, setLoading] = useState(false)
-  const [swipeMap, setSwipeMap] = useState<Record<number, string>>({})
-  const [searchTimeout, setSearchTimeout] = useState<ReturnType<typeof setTimeout> | null>(null)
+  const [swipeMap, setSwipeMap] = useState<Record<number, SwipeResult>>({})
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const loadRanking = async (s: RankingSort) => {
     setLoading(true)
     const [data, sm] = await Promise.all([fetchRanking(s, 1, 30), getSwipeMap()])
-    setResults(data)
+    setResults(await translateAnimeList(data))
     setSwipeMap(sm)
     setLoading(false)
   }
@@ -44,15 +45,14 @@ export function ExploreTab({ onAnimePress }: Props) {
 
   const handleSearch = (text: string) => {
     setSearchQuery(text)
-    if (searchTimeout) clearTimeout(searchTimeout)
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
     if (!text.trim()) { void loadRanking(sort); return }
     const t = setTimeout(async () => {
       setLoading(true)
-      const data = await searchAnime(text.trim())
-      setResults(data)
+      setResults(await translateAnimeList(await searchAnime(text.trim())))
       setLoading(false)
     }, 350)
-    setSearchTimeout(t)
+    searchTimeoutRef.current = t
   }
 
   function sortIcon(s: RankingSort) {

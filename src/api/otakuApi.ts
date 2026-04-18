@@ -77,6 +77,18 @@ export async function apiLogout(): Promise<void> {
   await clearToken()
 }
 
+export async function apiGoogleOAuth(idToken: string): Promise<AuthResponse> {
+  const res = await request<AuthResponse>('POST', '/auth/oauth/google', { idToken }, false)
+  await saveToken(res.token)
+  return res
+}
+
+export async function apiKakaoOAuth(accessToken: string): Promise<AuthResponse> {
+  const res = await request<AuthResponse>('POST', '/auth/oauth/kakao', { accessToken }, false)
+  await saveToken(res.token)
+  return res
+}
+
 // ── Swipes ────────────────────────────────────────────────────────────────────
 
 export type SwipeResponse = {

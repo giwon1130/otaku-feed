@@ -2,6 +2,7 @@
   "expo": {
     "name": "OtakuFeed",
     "slug": "otaku-feed",
+    "displayName": "오타쿠피드",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -22,10 +23,26 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.giwon.otakufeed"
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.496073748220-8j71chi4u7m9vpop8kn5vg30hvgh6an8"
+        }
+      ],
+      [
+        "@react-native-kakao/core",
+        {
+          "nativeAppKey": "ef9338c2b5ac76546d547e71bda8b580",
+          "kakaoLoginEnabled": true
+        }
+      ]
+    ]
   }
 }

@@ -10,8 +10,15 @@ import {
   View,
 } from 'react-native'
 import { LogIn, UserPlus } from 'lucide-react-native'
-import { apiLogin, apiSignup, type AuthResponse } from '../api/otakuApi'
+import { GoogleSignin } from '@react-native-google-signin/google-signin'
+import { login as kakaoLogin } from '@react-native-kakao/user'
+import { apiLogin, apiSignup, apiGoogleOAuth, apiKakaoOAuth, type AuthResponse } from '../api/otakuApi'
 import { styles } from '../styles'
+
+GoogleSignin.configure({
+  webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+  iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+})
 
 type Mode = 'login' | 'signup'
 
@@ -27,6 +34,39 @@ export function AuthScreen({ onDone, onSkip }: Props) {
   const [nickname, setNickname] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  const handleGoogleLogin = async () => {
+    setError('')
+    setLoading(true)
+    try {
+      await GoogleSignin.hasPlayServices()
+      const userInfo = await GoogleSignin.signIn()
+      const idToken = userInfo.data?.idToken
+      if (!idToken) throw new Error('구글 토큰을 받지 못했어.')
+      const res = await apiGoogleOAuth(idToken)
+      onDone(res)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '구글 로그인에 실패했어.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleKakaoLogin = async () => {
+    setError('')
+    setLoading(true)
+    try {
+      const result = await kakaoLogin()
+      const accessToken = result.accessToken
+      if (!accessToken) throw new Error('카카오 토큰을 받지 못했어.')
+      const res = await apiKakaoOAuth(accessToken)
+      onDone(res)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '카카오 로그인에 실패했어.')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleSubmit = async () => {
     setError('')
@@ -132,7 +172,7 @@ export function AuthScreen({ onDone, onSkip }: Props) {
         <Pressable
           onPress={handleSubmit}
           disabled={loading}
-          style={[styles.onboardingCTA, { opacity: loading ? 0.6 : 1, flexDirection: 'row', gap: 8 }]}
+          style={[styles.onboardingCTA, { opacity: loading ? 0.6 : 1, flexDirection: 'row', gap: 8, justifyContent: 'center' }]}
         >
           {loading
             ? <ActivityIndicator color="#fff" size="small" />
@@ -144,6 +184,52 @@ export function AuthScreen({ onDone, onSkip }: Props) {
             {loading ? '처리 중...' : mode === 'login' ? '로그인' : '계정 만들기'}
           </Text>
         </Pressable>
+
+        {/* 소셜 로그인 구분선 */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <View style={{ flex: 1, height: 1, backgroundColor: '#2a2a45' }} />
+          <Text style={{ color: '#45456b', fontSize: 12, fontWeight: '600' }}>또는</Text>
+          <View style={{ flex: 1, height: 1, backgroundColor: '#2a2a45' }} />
+        </View>
+
+        {/* 소셜 로그인 버튼들 */}
+        <View style={{ gap: 10 }}>
+          <Pressable
+            onPress={handleGoogleLogin}
+            disabled={loading}
+            style={{
+              flexDirection: 'row', alignItems: 'center',
+              backgroundColor: '#ffffff', borderRadius: 14, paddingVertical: 14, paddingHorizontal: 16,
+              opacity: loading ? 0.6 : 1,
+            }}
+          >
+            <View style={{ width: 28 }}>
+              <Text style={{ fontSize: 18 }}>G</Text>
+            </View>
+            <View style={{ flex: 1, alignItems: 'center' }}>
+              <Text style={{ color: '#1a1a1a', fontSize: 15, fontWeight: '700' }}>구글로 시작하기</Text>
+            </View>
+            <View style={{ width: 28 }} />
+          </Pressable>
+
+          <Pressable
+            onPress={handleKakaoLogin}
+            disabled={loading}
+            style={{
+              flexDirection: 'row', alignItems: 'center',
+              backgroundColor: '#FEE500', borderRadius: 14, paddingVertical: 14, paddingHorizontal: 16,
+              opacity: loading ? 0.6 : 1,
+            }}
+          >
+            <View style={{ width: 28 }}>
+              <Text style={{ fontSize: 18 }}>💬</Text>
+            </View>
+            <View style={{ flex: 1, alignItems: 'center' }}>
+              <Text style={{ color: '#3C1E1E', fontSize: 15, fontWeight: '700' }}>카카오로 시작하기</Text>
+            </View>
+            <View style={{ width: 28 }} />
+          </Pressable>
+        </View>
 
         {/* 건너뛰기 */}
         <Pressable onPress={onSkip} style={{ alignItems: 'center', paddingVertical: 8 }}>

@@ -10,6 +10,7 @@ import {
 } from 'react-native'
 import { Heart, Share2, Star, Trash2, X } from 'lucide-react-native'
 import { fetchAnimeById } from '../api/anilist'
+import { translateAnimeList } from '../api/translate'
 import { loadSwipes, removeSwipe } from '../storage'
 import { styles } from '../styles'
 import type { Anime, SwipeRecord } from '../types'
@@ -26,18 +27,29 @@ export function MyListTab({ onAnimePress }: Props) {
   const [animeMap, setAnimeMap] = useState<Record<number, Anime>>({})
   const [loading, setLoading] = useState(true)
 
+  // animeMap을 deps에서 제외하고 setAnimeMap의 함수형 업데이트로 최신값 참조
   const load = useCallback(async () => {
     const records = await loadSwipes()
     setSwipes(records)
 
-    const ids = records.map((r) => r.animeId)
-    const missing = ids.filter((id) => !animeMap[id])
-    if (missing.length) {
-      const fetched = await Promise.all(missing.map((id) => fetchAnimeById(id)))
-      const entries = fetched.flatMap((a) => (a ? [[a.id, a] as [number, Anime]] : []))
-      setAnimeMap((prev) => ({ ...prev, ...Object.fromEntries(entries) }))
-    }
-  }, [animeMap])
+    setAnimeMap((prevMap) => {
+      const ids = records.map((r) => r.animeId)
+      const missing = ids.filter((id) => !prevMap[id])
+      if (!missing.length) return prevMap
+
+      // 비동기 fetch는 별도로 실행 후 결과만 merge
+      void (async () => {
+        const fetched = (await Promise.all(missing.map((id) => fetchAnimeById(id)))).filter(Boolean) as Anime[]
+        const translated = await translateAnimeList(fetched)
+        const entries = translated.map((a) => [a.id, a] as [number, Anime])
+        if (entries.length) {
+          setAnimeMap((prev) => ({ ...prev, ...Object.fromEntries(entries) }))
+        }
+      })()
+
+      return prevMap
+    })
+  }, [])
 
   useEffect(() => {
     setLoading(true)
@@ -148,13 +160,13 @@ export function MyListTab({ onAnimePress }: Props) {
                 onPress={async () => {
                   await Share.share({ message: `🎌 ${anime.title} 추천해! → https://anilist.co/anime/${anime.id}` })
                 }}
-                style={{ backgroundColor: '#2d1b69', borderRadius: 8, padding: 8 }}
+                style={[styles.iconBtn, styles.iconBtnLike]}
               >
                 <Share2 size={14} color="#9f67ff" />
               </Pressable>
               <Pressable
                 onPress={() => void handleRemove(anime.id)}
-                style={{ backgroundColor: '#3a0e0e', borderRadius: 8, padding: 8 }}
+                style={[styles.iconBtn, styles.iconBtnDislike]}
               >
                 <Trash2 size={14} color="#ef4444" />
               </Pressable>

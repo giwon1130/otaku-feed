@@ -11,9 +11,11 @@ import {
 } from 'react-native'
 import { Heart, RefreshCw, Share2, X } from 'lucide-react-native'
 import { fetchTrending, fetchByGenres } from '../api/anilist'
+import { translateAnimeList } from '../api/translate'
+import { GENRE_KO } from '../constants'
 import { addSwipe, getSwipeMap } from '../storage'
 import { styles } from '../styles'
-import type { Anime } from '../types'
+import type { Anime, SwipeResult } from '../types'
 
 type Props = {
   favoriteGenres: string[]
@@ -25,7 +27,7 @@ const SWIPE_THRESHOLD = 80
 export function SwipeTab({ favoriteGenres, onAnimePress }: Props) {
   const [queue, setQueue] = useState<Anime[]>([])
   const [loading, setLoading] = useState(true)
-  const [swipeMap, setSwipeMap] = useState<Record<number, string>>({})
+  const [swipeMap, setSwipeMap] = useState<Record<number, SwipeResult>>({})
   const [stampDir, setStampDir] = useState<'like' | 'dislike' | null>(null)
 
   const position = useRef(new Animated.ValueXY()).current
@@ -44,7 +46,8 @@ export function SwipeTab({ favoriteGenres, onAnimePress }: Props) {
     } else {
       data = await fetchTrending(1, 40)
     }
-    setQueue(data.filter((a) => !seenIds.has(a.id)))
+    const filtered = data.filter((a) => !seenIds.has(a.id))
+    setQueue(await translateAnimeList(filtered))
   }, [favoriteGenres])
 
   useEffect(() => {
@@ -78,15 +81,19 @@ export function SwipeTab({ favoriteGenres, onAnimePress }: Props) {
     position.setValue({ x: 0, y: 0 })
   }, [current, position])
 
+  // panResponder는 한 번만 생성되므로 ref로 최신 handleSwipe를 전달
+  const handleSwipeRef = useRef(handleSwipe)
+  useEffect(() => { handleSwipeRef.current = handleSwipe }, [handleSwipe])
+
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onPanResponderMove: Animated.event([null, { dx: position.x, dy: position.y }], { useNativeDriver: false }),
       onPanResponderRelease: (_, gesture) => {
         if (gesture.dx > SWIPE_THRESHOLD) {
-          void handleSwipe('like')
+          void handleSwipeRef.current('like')
         } else if (gesture.dx < -SWIPE_THRESHOLD) {
-          void handleSwipe('dislike')
+          void handleSwipeRef.current('dislike')
         } else {
           Animated.spring(position, { toValue: { x: 0, y: 0 }, useNativeDriver: false }).start()
         }
@@ -121,20 +128,26 @@ export function SwipeTab({ favoriteGenres, onAnimePress }: Props) {
   }
 
   return (
-    <View style={{ flex: 1, alignItems: 'center', paddingTop: 16, paddingHorizontal: 14 }}>
+    <View style={{ flex: 1, paddingHorizontal: 14 }}>
       {/* 남은 카드 수 */}
-      <Text style={[styles.metaText, { marginBottom: 10 }]}>남은 애니 {queue.length}개</Text>
+      <Text style={[styles.metaText, { textAlign: 'center', paddingTop: 12, marginBottom: 8 }]}>
+        남은 애니 {queue.length}개
+      </Text>
 
-      {/* 카드 */}
+      {/* 카드 - flex: 1 로 남은 공간 전부 차지 */}
       <Animated.View
         style={[
           styles.swipeCardWrap,
-          { width: '100%', transform: [{ translateX: position.x }, { translateY: position.y }, { rotate }] },
+          { flex: 1, transform: [{ translateX: position.x }, { translateY: position.y }, { rotate }] },
         ]}
         {...panResponder.panHandlers}
       >
-        <Pressable onPress={() => onAnimePress(current)}>
-          <Image source={{ uri: current.coverImage }} style={styles.swipeCardImage} resizeMode="cover" />
+        <Pressable onPress={() => onAnimePress(current)} style={{ flex: 1 }}>
+          <Image
+            source={{ uri: current.coverImage }}
+            style={{ width: '100%', flex: 1 }}
+            resizeMode="cover"
+          />
 
           {/* 점수 뱃지 */}
           {current.score ? (
@@ -146,20 +159,17 @@ export function SwipeTab({ favoriteGenres, onAnimePress }: Props) {
 
           {/* 좋아요 스탬프 */}
           <Animated.View style={[styles.stampLike, { opacity: likeOpacity }]}>
-            <Text style={[styles.stampText, { color: '#9f67ff' }]}>LIKE</Text>
+            <Text style={[styles.stampText, { color: '#9f67ff' }]}>좋아요</Text>
           </Animated.View>
 
           {/* 싫어요 스탬프 */}
           <Animated.View style={[styles.stampDislike, { opacity: dislikeOpacity }]}>
-            <Text style={[styles.stampText, { color: '#ef4444' }]}>PASS</Text>
+            <Text style={[styles.stampText, { color: '#ef4444' }]}>패스</Text>
           </Animated.View>
 
           {/* 오버레이 정보 */}
-          <View style={[styles.swipeCardOverlay, {
-            background: 'linear-gradient(transparent, rgba(0,0,0,0.9))',
-            backgroundColor: 'transparent',
-          }]}>
-            <View style={{ backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 16, padding: 12, gap: 6 }}>
+          <View style={styles.swipeCardOverlay}>
+            <View style={{ backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 16, padding: 12, gap: 6 }}>
               <Text style={styles.swipeCardTitle} numberOfLines={2}>{current.title}</Text>
               <Text style={styles.swipeCardNative} numberOfLines={1}>{current.titleNative}</Text>
               <Text style={styles.swipeCardMeta}>
@@ -168,7 +178,7 @@ export function SwipeTab({ favoriteGenres, onAnimePress }: Props) {
               <View style={styles.swipeCardGenres}>
                 {current.genres.slice(0, 4).map((g) => (
                   <View key={g} style={styles.swipeGenreTag}>
-                    <Text style={styles.swipeGenreTagText}>{g}</Text>
+                    <Text style={styles.swipeGenreTagText}>{GENRE_KO[g] ?? g}</Text>
                   </View>
                 ))}
               </View>
@@ -192,7 +202,7 @@ export function SwipeTab({ favoriteGenres, onAnimePress }: Props) {
 
       {/* 공유 버튼 */}
       <Pressable
-        style={[styles.shareBtn, { width: '100%', marginTop: 4 }]}
+        style={[styles.shareBtn, { marginBottom: 14 }]}
         onPress={async () => {
           await Share.share({
             message: `🎌 ${current.title} 어때? → https://anilist.co/anime/${current.id}`,
