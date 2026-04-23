@@ -9,8 +9,9 @@ import {
   View,
 } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import { BarChart2, Clock, Search, Star, TrendingUp, X, Zap } from 'lucide-react-native'
-import { fetchRanking, searchAnime } from '../api/anilist'
+import { BarChart2, Clock, Filter, Search, Star, TrendingUp, X, Zap } from 'lucide-react-native'
+import { fetchByGenres, fetchRanking, searchAnime } from '../api/anilist'
+import { GENRE_KO } from '../constants'
 import { translateAnimeList } from '../api/translate'
 import { getSwipeMap } from '../storage'
 import { styles } from '../styles'
@@ -30,6 +31,13 @@ const SORT_OPTIONS: Array<{ key: RankingSort; label: string }> = [
 ]
 const PER_PAGE = 30
 const HISTORY_KEY = 'otaku:searchHistory'
+
+// 자주 보는 장르를 우선 노출
+const GENRE_FILTER_OPTIONS: string[] = [
+  'Action', 'Romance', 'Comedy', 'Fantasy', 'Drama', 'Sci-Fi',
+  'Slice of Life', 'Mystery', 'Sports', 'Horror', 'Mecha', 'Supernatural',
+  'Psychological', 'Thriller', 'Adventure',
+]
 
 function SkeletonRows() {
   return (
@@ -61,6 +69,7 @@ export function ExploreTab({ onAnimePress }: Props) {
   const [page,        setPage]        = useState(1)
   const [swipeMap,    setSwipeMap]    = useState<Record<number, SwipeResult>>({})
   const [history,     setHistory]     = useState<string[]>([])
+  const [genreFilter, setGenreFilter] = useState<string | null>(null)
 
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -84,12 +93,16 @@ export function ExploreTab({ onAnimePress }: Props) {
     await AsyncStorage.removeItem(HISTORY_KEY)
   }
 
-  const loadRanking = async (s: RankingSort, p = 1, append = false) => {
+  const loadRanking = async (s: RankingSort, genre: string | null, p = 1, append = false) => {
     if (p === 1) setLoading(true)
     else setLoadingMore(true)
 
+    const fetchPromise = genre
+      ? fetchByGenres([genre], p, PER_PAGE)
+      : fetchRanking(s, p, PER_PAGE)
+
     const [data, sm] = await Promise.all([
-      fetchRanking(s, p, PER_PAGE),
+      fetchPromise,
       p === 1 ? getSwipeMap() : Promise.resolve(swipeMap),
     ])
     const translated = await translateAnimeList(data)
@@ -107,12 +120,12 @@ export function ExploreTab({ onAnimePress }: Props) {
     else setLoadingMore(false)
   }
 
-  useEffect(() => { void loadRanking(sort) }, [sort])
+  useEffect(() => { void loadRanking(sort, genreFilter) }, [sort, genreFilter])
 
   const handleSearch = (text: string) => {
     setSearchQuery(text)
     if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
-    if (!text.trim()) { void loadRanking(sort); return }
+    if (!text.trim()) { void loadRanking(sort, genreFilter); return }
     const t = setTimeout(async () => {
       setLoading(true)
       setResults(await translateAnimeList(await searchAnime(text.trim())))
@@ -126,13 +139,13 @@ export function ExploreTab({ onAnimePress }: Props) {
   const onRefresh = async () => {
     setRefreshing(true)
     void hapticLight()
-    await loadRanking(sort, 1)
+    await loadRanking(sort, genreFilter, 1)
     setRefreshing(false)
   }
 
   const onEndReached = () => {
     if (searchQuery || loadingMore || !hasMore) return
-    void loadRanking(sort, page + 1, true)
+    void loadRanking(sort, genreFilter, page + 1, true)
   }
 
   function sortIcon(s: RankingSort) {
@@ -207,23 +220,73 @@ export function ExploreTab({ onAnimePress }: Props) {
             <View style={styles.sectionHeaderRow}>
               <View style={styles.cardTitleRow}>
                 <BarChart2 size={14} color="#9f67ff" strokeWidth={2.5} />
-                <Text style={styles.cardTitle}>랭킹</Text>
+                <Text style={styles.cardTitle}>{genreFilter ? `${GENRE_KO[genreFilter] ?? genreFilter} 인기작` : '랭킹'}</Text>
               </View>
               <Text style={styles.metaText}>{results.length}개</Text>
             </View>
-            <View style={styles.filterRow}>
-              {SORT_OPTIONS.map((opt) => (
+            {!genreFilter ? (
+              <View style={styles.filterRow}>
+                {SORT_OPTIONS.map((opt) => (
+                  <Pressable
+                    key={opt.key}
+                    onPress={() => { void hapticMedium(); setSort(opt.key) }}
+                    style={[styles.filterChip, sort === opt.key && styles.filterChipActive]}
+                  >
+                    <Text style={[styles.filterText, sort === opt.key && styles.filterTextActive]}>
+                      {opt.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
+
+            {/* 장르 필터 칩 */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 }}>
+              <Filter size={12} color="#6b6b99" strokeWidth={2.5} />
+              <Text style={{ color: '#6b6b99', fontSize: 11, fontWeight: '700' }}>장르</Text>
+              {genreFilter ? (
                 <Pressable
-                  key={opt.key}
-                  onPress={() => { void hapticMedium(); setSort(opt.key) }}
-                  style={[styles.filterChip, sort === opt.key && styles.filterChipActive]}
+                  onPress={() => { void hapticLight(); setGenreFilter(null) }}
+                  style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 3 }}
                 >
-                  <Text style={[styles.filterText, sort === opt.key && styles.filterTextActive]}>
-                    {opt.label}
-                  </Text>
+                  <X size={11} color="#9f67ff" strokeWidth={2.5} />
+                  <Text style={{ color: '#9f67ff', fontSize: 11, fontWeight: '700' }}>초기화</Text>
                 </Pressable>
-              ))}
+              ) : null}
             </View>
+            <FlatList
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              data={GENRE_FILTER_OPTIONS}
+              keyExtractor={(g) => g}
+              contentContainerStyle={{ gap: 6, paddingVertical: 6 }}
+              renderItem={({ item: g }) => {
+                const active = genreFilter === g
+                return (
+                  <Pressable
+                    onPress={() => {
+                      void hapticMedium()
+                      setGenreFilter(active ? null : g)
+                    }}
+                    style={{
+                      paddingHorizontal: 12, paddingVertical: 6,
+                      borderRadius: 999,
+                      backgroundColor: active ? '#7c3aed' : '#1a1a2e',
+                      borderWidth: 1,
+                      borderColor: active ? '#9f67ff' : '#2a2a4a',
+                    }}
+                  >
+                    <Text style={{
+                      color: active ? '#fff' : '#a8a8cc',
+                      fontSize: 12,
+                      fontWeight: '700',
+                    }}>
+                      {GENRE_KO[g] ?? g}
+                    </Text>
+                  </Pressable>
+                )
+              }}
+            />
           </View>
         ) : null}
       </View>

@@ -1,4 +1,5 @@
 import { Pressable, ScrollView, Text, View } from 'react-native'
+import { X } from 'lucide-react-native'
 import { styles } from '../styles'
 import { savePrefs } from '../storage'
 import type { UserPrefs } from '../types'
@@ -20,10 +21,14 @@ const GENRE_KO: Record<string, string> = {
 
 type Props = {
   onDone: (prefs: UserPrefs) => void
+  /** 'edit' 모드는 이미 온보딩한 유저가 장르만 다시 고를 때 */
+  mode?: 'first' | 'edit'
+  initialGenres?: string[]
+  onCancel?: () => void
 }
 
-export function OnboardingScreen({ onDone }: Props) {
-  const [selected, setSelected] = useState<string[]>([])
+export function OnboardingScreen({ onDone, mode = 'first', initialGenres, onCancel }: Props) {
+  const [selected, setSelected] = useState<string[]>(initialGenres ?? [])
 
   const toggle = (genre: string) => {
     setSelected((prev) =>
@@ -37,13 +42,32 @@ export function OnboardingScreen({ onDone }: Props) {
     onDone(prefs)
   }
 
+  const isEdit = mode === 'edit'
+
   return (
     <View style={styles.onboardingWrap}>
+      {isEdit && onCancel ? (
+        <Pressable
+          onPress={onCancel}
+          style={{
+            position: 'absolute', top: 12, right: 12, zIndex: 1,
+            backgroundColor: 'rgba(255,255,255,0.06)',
+            borderRadius: 999, padding: 8,
+          }}
+        >
+          <X size={18} color="#a8a8cc" strokeWidth={2.5} />
+        </Pressable>
+      ) : null}
+
       <View style={{ gap: 8 }}>
         <Text style={{ color: '#9f67ff', fontSize: 14, fontWeight: '900', letterSpacing: 3 }}>OTAKU FEED</Text>
-        <Text style={styles.onboardingTitle}>좋아하는 장르를{'\n'}골라봐 👾</Text>
+        <Text style={styles.onboardingTitle}>
+          {isEdit ? '좋아하는 장르\n다시 골라보자 ✨' : '좋아하는 장르를\n골라봐 👾'}
+        </Text>
         <Text style={styles.onboardingSubtitle}>
-          선택한 장르로 취향에 맞는 애니를 추천해줄게.{'\n'}나중에 바꿀 수도 있어.
+          {isEdit
+            ? '이전에 고른 장르가 표시되어 있어.\n자유롭게 빼거나 추가해.'
+            : '선택한 장르로 취향에 맞는 애니를 추천해줄게.\n나중에 바꿀 수도 있어.'}
         </Text>
       </View>
 
@@ -66,7 +90,11 @@ export function OnboardingScreen({ onDone }: Props) {
         disabled={selected.length === 0}
       >
         <Text style={styles.onboardingCTAText}>
-          {selected.length === 0 ? '장르를 1개 이상 선택해' : `${selected.length}개 선택 완료 → 시작!`}
+          {selected.length === 0
+            ? '장르를 1개 이상 선택해'
+            : isEdit
+              ? `${selected.length}개로 저장`
+              : `${selected.length}개 선택 완료 → 시작!`}
         </Text>
       </Pressable>
     </View>
