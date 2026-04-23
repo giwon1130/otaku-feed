@@ -1,16 +1,42 @@
+import { useEffect, useState } from 'react'
 import {
-  Image, Modal, Pressable, ScrollView, Text, View,
+  ActivityIndicator,
+  FlatList,
+  Image, Linking, Modal, Pressable, ScrollView, Text, View,
   StatusBar, Dimensions,
 } from 'react-native'
-import { X, Star, Tv, Calendar, Building2, BookOpen } from 'lucide-react-native'
+import { X, Star, Tv, Calendar, Building2, BookOpen, MonitorPlay, Sparkles } from 'lucide-react-native'
 import { GENRE_KO, SEASON_KO, STATUS_KO } from '../constants'
-import type { Anime } from '../types'
+import { fetchAnimeLinks, fetchRecommendations } from '../api/anilist'
+import { translateAnimeList } from '../api/translate'
+import { ImageWithLoader } from './ImageWithLoader'
+import { hapticLight } from '../utils/haptics'
+import type { Anime, ExternalLink } from '../types'
 
 const { height: SCREEN_H } = Dimensions.get('window')
+
+// 플랫폼별 색상
+const PLATFORM_COLOR: Record<string, string> = {
+  'Crunchyroll':           '#F47521',
+  'Netflix':               '#E50914',
+  'Amazon Prime Video':    '#00A8E0',
+  'Amazon':                '#00A8E0',
+  'Disney+':               '#113CCF',
+  'Funimation':            '#5B0BB5',
+  'HIDIVE':                '#00AEEF',
+  'YouTube':               '#FF0000',
+  'Hulu':                  '#3DBB3D',
+  'Apple TV+':             '#555555',
+  'Bilibili':              '#00A1D6',
+  'VRV':                   '#FFDB1E',
+  'Wakanim':               '#E4001E',
+  'AnimeLabPlus':          '#1B55A0',
+}
 
 type Props = {
   anime: Anime | null
   onClose: () => void
+  onSelectSimilar?: (anime: Anime) => void
 }
 
 function stripHtml(text: string): string {
@@ -20,7 +46,28 @@ function stripHtml(text: string): string {
   }).trim()
 }
 
-export function AnimeDetailModal({ anime, onClose }: Props) {
+export function AnimeDetailModal({ anime, onClose, onSelectSimilar }: Props) {
+  const [links,        setLinks]        = useState<ExternalLink[]>([])
+  const [linksLoading, setLinksLoading] = useState(false)
+  const [similar,        setSimilar]        = useState<Anime[]>([])
+  const [similarLoading, setSimilarLoading] = useState(false)
+
+  useEffect(() => {
+    if (!anime) return
+    setLinks([])
+    setLinksLoading(true)
+    fetchAnimeLinks(anime.id)
+      .then(setLinks)
+      .finally(() => setLinksLoading(false))
+
+    setSimilar([])
+    setSimilarLoading(true)
+    fetchRecommendations(anime.id, 10)
+      .then(translateAnimeList)
+      .then(setSimilar)
+      .finally(() => setSimilarLoading(false))
+  }, [anime?.id])
+
   if (!anime) return null
 
   return (
@@ -40,12 +87,10 @@ export function AnimeDetailModal({ anime, onClose }: Props) {
             style={{ width: '100%', height: '100%' }}
             resizeMode="cover"
           />
-          {/* 그라데이션 오버레이 */}
           <View style={{
             position: 'absolute', bottom: 0, left: 0, right: 0, height: '60%',
             backgroundColor: 'rgba(15,15,26,0.7)',
           }} />
-          {/* 닫기 버튼 */}
           <Pressable
             onPress={onClose}
             style={{
@@ -56,8 +101,6 @@ export function AnimeDetailModal({ anime, onClose }: Props) {
           >
             <X size={20} color="#fff" strokeWidth={2.5} />
           </Pressable>
-
-          {/* 커버 이미지 */}
           <View style={{
             position: 'absolute', bottom: -40, left: 20,
             shadowColor: '#000', shadowOpacity: 0.6, shadowRadius: 12, shadowOffset: { width: 0, height: 4 },
@@ -146,6 +189,49 @@ export function AnimeDetailModal({ anime, onClose }: Props) {
             </View>
           ) : null}
 
+          {/* ── 어디서 볼 수 있어? ── */}
+          <View style={{ gap: 10, marginBottom: 24 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <MonitorPlay size={14} color="#9f67ff" strokeWidth={2.5} />
+              <Text style={{ color: '#9f67ff', fontSize: 13, fontWeight: '800' }}>어디서 볼 수 있어?</Text>
+            </View>
+
+            {linksLoading ? (
+              <ActivityIndicator size="small" color="#9f67ff" style={{ alignSelf: 'flex-start' }} />
+            ) : links.length > 0 ? (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {links.map((link) => {
+                  const color = (link.color ?? PLATFORM_COLOR[link.site]) ?? '#7c3aed'
+                  return (
+                    <Pressable
+                      key={link.url}
+                      onPress={() => void Linking.openURL(link.url)}
+                      style={{
+                        paddingHorizontal: 14, paddingVertical: 9,
+                        borderRadius: 12, borderWidth: 1.5,
+                        borderColor: color + '66',
+                        backgroundColor: color + '22',
+                        flexDirection: 'row', alignItems: 'center', gap: 6,
+                      }}
+                    >
+                      <View style={{
+                        width: 8, height: 8, borderRadius: 4,
+                        backgroundColor: color,
+                      }} />
+                      <Text style={{ color: '#f0f0ff', fontSize: 13, fontWeight: '700' }}>
+                        {link.site}
+                      </Text>
+                    </Pressable>
+                  )
+                })}
+              </View>
+            ) : (
+              <Text style={{ color: '#45456b', fontSize: 13, fontWeight: '600' }}>
+                한국에서 볼 수 있는 플랫폼 정보가 없어. 😢
+              </Text>
+            )}
+          </View>
+
           {/* 줄거리 */}
           {anime.description ? (
             <View style={{ gap: 8 }}>
@@ -156,6 +242,56 @@ export function AnimeDetailModal({ anime, onClose }: Props) {
               <Text style={{ color: '#c8c8e8', fontSize: 14, lineHeight: 22 }}>
                 {stripHtml(anime.description)}
               </Text>
+            </View>
+          ) : null}
+
+          {/* ── 비슷한 작품 ── */}
+          {(similarLoading || similar.length > 0) ? (
+            <View style={{ gap: 10, marginTop: 24 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Sparkles size={14} color="#9f67ff" strokeWidth={2.5} />
+                <Text style={{ color: '#9f67ff', fontSize: 13, fontWeight: '800' }}>이거 좋아하면 이것도</Text>
+              </View>
+              {similarLoading ? (
+                <ActivityIndicator size="small" color="#9f67ff" style={{ alignSelf: 'flex-start' }} />
+              ) : (
+                <FlatList
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  data={similar}
+                  keyExtractor={(item) => String(item.id)}
+                  contentContainerStyle={{ gap: 10 }}
+                  renderItem={({ item }) => (
+                    <Pressable
+                      onPress={() => {
+                        void hapticLight()
+                        if (onSelectSimilar) onSelectSimilar(item)
+                      }}
+                      style={{ width: 110 }}
+                    >
+                      <ImageWithLoader
+                        uri={item.coverImage}
+                        style={{ width: 110, height: 156, borderRadius: 10 }}
+                        resizeMode="cover"
+                      />
+                      <Text
+                        style={{ color: '#f0f0ff', fontSize: 12, fontWeight: '700', marginTop: 6 }}
+                        numberOfLines={2}
+                      >
+                        {item.title}
+                      </Text>
+                      {item.score ? (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 }}>
+                          <Star size={10} color="#f59e0b" fill="#f59e0b" />
+                          <Text style={{ color: '#f59e0b', fontSize: 11, fontWeight: '700' }}>
+                            {(item.score / 10).toFixed(1)}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </Pressable>
+                  )}
+                />
+              )}
             </View>
           ) : null}
         </ScrollView>

@@ -4,6 +4,7 @@ import { BarChart2, Heart, Home, LogOut, Shuffle, User } from 'lucide-react-nati
 import { loadPrefs, syncLocalToServer } from './src/storage'
 import { apiLogout, apiMe, getToken, type AuthResponse } from './src/api/otakuApi'
 import { styles } from './src/styles'
+import { hapticLight } from './src/utils/haptics'
 import { AuthScreen } from './src/components/AuthScreen'
 import { AnimeDetailModal } from './src/components/AnimeDetailModal'
 import { OnboardingScreen } from './src/components/OnboardingScreen'
@@ -186,7 +187,7 @@ export default function App() {
           return (
             <Pressable
               key={key}
-              onPress={() => { setActiveTab(key); setShowUserMenu(false) }}
+              onPress={() => { void hapticLight(); setActiveTab(key); setShowUserMenu(false) }}
               style={({ pressed }) => [
                 styles.tabItem,
                 active && styles.tabItemActive,
@@ -211,7 +212,11 @@ export default function App() {
       {activeTab === 'swipe'   ? <SwipeTab   favoriteGenres={prefs?.favoriteGenres ?? []} onAnimePress={handleAnimePress} /> : null}
       {activeTab === 'mylist'  ? <MyListTab  onAnimePress={handleAnimePress} /> : null}
 
-      <AnimeDetailModal anime={selectedAnime} onClose={() => setSelectedAnime(null)} />
+      <AnimeDetailModal
+        anime={selectedAnime}
+        onClose={() => setSelectedAnime(null)}
+        onSelectSimilar={(a) => setSelectedAnime(a)}
+      />
     </SafeAreaView>
   )
 }

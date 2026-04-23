@@ -1,4 +1,4 @@
-import type { Anime, AnimeSeason, RankingSort } from '../types'
+import type { Anime, AnimeSeason, ExternalLink, RankingSort } from '../types'
 
 const ENDPOINT = 'https://graphql.anilist.co'
 
@@ -134,17 +134,109 @@ export async function fetchAnimeById(id: number): Promise<Anime | null> {
   return data.Media ? mapAnime(data.Media) : null
 }
 
+// ── 스트리밍 링크 ──────────────────────────────────────────────────────────
+
+// 한국에서 시청 가능한 글로벌 플랫폼
+const KOREA_GLOBAL_PLATFORMS = new Set([
+  'Netflix', 'Disney+', 'YouTube', 'Laftel', 'Wavve', 'Watcha',
+  'Naver Series On', 'KakaoTV', 'Seezn', 'Tving',
+])
+
+export async function fetchAnimeLinks(id: number): Promise<ExternalLink[]> {
+  const data = await query<{ Media: { externalLinks: (ExternalLink & { language: string | null })[] } | null }>(`
+    query($id: Int) {
+      Media(id: $id, type: ANIME) {
+        externalLinks { url site type color language }
+      }
+    }
+  `, { id })
+  return (data.Media?.externalLinks ?? []).filter((l) =>
+    l.type === 'STREAMING' &&
+    (l.language === 'Korean' || KOREA_GLOBAL_PLATFORMS.has(l.site))
+  )
+}
+
 // ── 검색 ─────────────────────────────────────────────────────────────────
 
+// 한글 검색어 감지 → AniList는 영어/일본어/로마자만 잘 작동.
+const HANGUL_RE = /[\uac00-\ud7af]/
+
+async function translateKoToEn(text: string): Promise<string | null> {
+  try {
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=ko&tl=en&dt=t&q=${encodeURIComponent(text)}`
+    const res = await fetch(url)
+    const json = await res.json() as unknown[][]
+    const translated = (json[0] as unknown[][])
+      .map((chunk) => (chunk[0] as string) ?? '')
+      .join('')
+      .trim()
+    return translated || null
+  } catch {
+    return null
+  }
+}
+
 export async function searchAnime(keyword: string, page = 1, perPage = 20): Promise<Anime[]> {
-  const data = await query<{ Page: { media: Record<string, unknown>[] } }>(`
-    query($page: Int, $perPage: Int, $search: String) {
-      Page(page: $page, perPage: $perPage) {
-        media(type: ANIME, search: $search, sort: POPULARITY_DESC) {
-          ${ANIME_FIELDS}
+  const trimmed = keyword.trim()
+
+  // 한글이면 영어로 변환해서 한 번 더 검색 (한글 결과 + 영어 결과 머지)
+  let englishKeyword: string | null = null
+  if (HANGUL_RE.test(trimmed)) {
+    englishKeyword = await translateKoToEn(trimmed)
+  }
+
+  const runQuery = async (search: string) => {
+    const data = await query<{ Page: { media: Record<string, unknown>[] } }>(`
+      query($page: Int, $perPage: Int, $search: String) {
+        Page(page: $page, perPage: $perPage) {
+          media(type: ANIME, search: $search, sort: POPULARITY_DESC) {
+            ${ANIME_FIELDS}
+          }
+        }
+      }
+    `, { page, perPage, search })
+    return data.Page.media.map(mapAnime)
+  }
+
+  const primary = await runQuery(trimmed)
+  if (!englishKeyword || englishKeyword.toLowerCase() === trimmed.toLowerCase()) {
+    return primary
+  }
+
+  // 한글 검색은 보통 0건 → 영어 변환 결과를 메인으로 사용
+  const fallback = await runQuery(englishKeyword)
+  // 둘 머지 + 중복 제거
+  const seen = new Set<number>()
+  return [...primary, ...fallback].filter((a) => {
+    if (seen.has(a.id)) return false
+    seen.add(a.id)
+    return true
+  })
+}
+
+// ── 추천 / 관련 ──────────────────────────────────────────────────────────────
+
+/**
+ * AniList의 recommendations: 사용자 평가가 높은 비슷한 작품들.
+ * 디테일 모달 "비슷한 작품" 섹션에 표시.
+ */
+export async function fetchRecommendations(id: number, perPage = 8): Promise<Anime[]> {
+  const data = await query<{ Media: { recommendations: { nodes: { mediaRecommendation: Record<string, unknown> | null }[] } } | null }>(`
+    query($id: Int, $perPage: Int) {
+      Media(id: $id, type: ANIME) {
+        recommendations(sort: RATING_DESC, perPage: $perPage) {
+          nodes {
+            mediaRecommendation {
+              ${ANIME_FIELDS}
+            }
+          }
         }
       }
     }
-  `, { page, perPage, search: keyword })
-  return data.Page.media.map(mapAnime)
+  `, { id, perPage })
+  const nodes = data.Media?.recommendations?.nodes ?? []
+  return nodes
+    .map((n) => n.mediaRecommendation)
+    .filter((m): m is Record<string, unknown> => !!m)
+    .map(mapAnime)
 }

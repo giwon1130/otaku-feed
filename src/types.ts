@@ -9,6 +9,13 @@ export type AnimeStatus = 'FINISHED' | 'RELEASING' | 'NOT_YET_RELEASED' | 'CANCE
 
 export type AnimeSeason = 'WINTER' | 'SPRING' | 'SUMMER' | 'FALL'
 
+export type ExternalLink = {
+  url: string
+  site: string
+  type: string
+  color: string | null
+}
+
 export type Anime = {
   id: number
   title: string           // 영어 제목

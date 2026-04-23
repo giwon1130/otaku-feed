@@ -1,8 +1,6 @@
 import { memo, useCallback, useEffect, useState } from 'react'
 import {
-  ActivityIndicator,
   FlatList,
-  Image,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -10,14 +8,16 @@ import {
   Text,
   View,
 } from 'react-native'
-import { Flame, Sparkles, Star, TrendingUp } from 'lucide-react-native'
-
-import { fetchCurrentSeason, fetchTrending } from '../api/anilist'
+import { Flame, Heart, Sparkles, Star, TrendingUp } from 'lucide-react-native'
+import { fetchAnimeById, fetchByGenres, fetchCurrentSeason, fetchTrending } from '../api/anilist'
 import { translateAnimeList } from '../api/translate'
 import { GENRE_KO } from '../constants'
 import { styles } from '../styles'
+import { Skeleton } from '../components/Skeleton'
+import { ImageWithLoader } from '../components/ImageWithLoader'
+import { hapticLight } from '../utils/haptics'
 import type { Anime, SwipeResult } from '../types'
-import { getSwipeMap } from '../storage'
+import { getSwipeMap, loadSwipes } from '../storage'
 
 type Props = {
   favoriteGenres: string[]
@@ -34,6 +34,70 @@ function ScoreBadge({ score }: { score: number }) {
   )
 }
 
+function SkeletonHome() {
+  return (
+    <ScrollView style={styles.scroll} contentContainerStyle={styles.content} scrollEnabled={false}>
+      {/* 오늘의 픽 */}
+      <View style={[styles.primaryCard, { gap: 12 }]}>
+        <Skeleton height={12} width="35%" borderRadius={6} />
+        <View style={{ flexDirection: 'row', gap: 12 }}>
+          <Skeleton width={80} height={110} borderRadius={10} />
+          <View style={{ flex: 1, gap: 8 }}>
+            <Skeleton height={18} width="80%" />
+            <Skeleton height={12} width="60%" />
+            <Skeleton height={12} width="35%" />
+            <View style={{ flexDirection: 'row', gap: 5, marginTop: 4 }}>
+              <Skeleton width={50} height={22} borderRadius={999} />
+              <Skeleton width={50} height={22} borderRadius={999} />
+              <Skeleton width={50} height={22} borderRadius={999} />
+            </View>
+          </View>
+        </View>
+        <Skeleton height={44} borderRadius={12} />
+      </View>
+
+      {/* KPI */}
+      <View style={styles.kpiRow}>
+        {[0, 1, 2].map((i) => (
+          <View key={i} style={[styles.kpiCard, { gap: 8 }]}>
+            <Skeleton width={22} height={22} borderRadius={11} />
+            <Skeleton height={10} width="70%" />
+            <Skeleton height={22} width="50%" />
+          </View>
+        ))}
+      </View>
+
+      {/* 트렌딩 */}
+      <View style={[styles.card, { gap: 12 }]}>
+        <Skeleton height={14} width="40%" />
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          {[0, 1, 2, 3].map((i) => (
+            <View key={i} style={{ gap: 6 }}>
+              <Skeleton width={130} height={185} borderRadius={12} />
+              <Skeleton height={12} width={100} />
+              <Skeleton height={10} width={70} />
+            </View>
+          ))}
+        </View>
+      </View>
+
+      {/* 시즌 신작 */}
+      <View style={[styles.card, { gap: 12 }]}>
+        <Skeleton height={14} width="50%" />
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          {[0, 1, 2, 3].map((i) => (
+            <View key={i} style={{ gap: 6 }}>
+              <Skeleton width={130} height={185} borderRadius={12} />
+              <Skeleton height={12} width={100} />
+              <Skeleton height={10} width={70} />
+            </View>
+          ))}
+        </View>
+      </View>
+    </ScrollView>
+  )
+}
+
 const HorizontalAnimeList = memo(function HorizontalAnimeList({ data, onPress, swipeMap }: {
   data: Anime[]
   onPress: (a: Anime) => void
@@ -42,8 +106,8 @@ const HorizontalAnimeList = memo(function HorizontalAnimeList({ data, onPress, s
   const renderItem = useCallback(({ item }: { item: Anime }) => {
     const result = swipeMap[item.id]
     return (
-      <Pressable onPress={() => onPress(item)} style={styles.hCard}>
-        <Image source={{ uri: item.coverImage }} style={styles.hCardImage} resizeMode="cover" />
+      <Pressable onPress={() => { void hapticLight(); onPress(item) }} style={styles.hCard}>
+        <ImageWithLoader uri={item.coverImage} style={styles.hCardImage} resizeMode="cover" />
         {result === 'like' ? (
           <View style={styles.hCardLikeBadge}>
             <Star size={10} color="#fff" fill="#fff" />
@@ -69,18 +133,40 @@ const HorizontalAnimeList = memo(function HorizontalAnimeList({ data, onPress, s
   )
 })
 
+/**
+ * 좋아요한 애니의 장르 빈도를 세서 top-N 장르를 뽑는다.
+ * 좋아요 데이터가 없으면 온보딩 favoriteGenres 사용.
+ */
+async function pickRecommendedGenres(fallback: string[], topN = 3): Promise<string[]> {
+  const swipes = await loadSwipes()
+  const liked = swipes.filter((s) => s.result === 'like').slice(-30)   // 최근 30개 좋아요
+  if (liked.length === 0) return fallback.slice(0, topN)
+
+  // 각 좋아요 애니의 장르 가져와서 카운트
+  const animes = (await Promise.all(liked.map((s) => fetchAnimeById(s.animeId).catch(() => null))))
+    .filter(Boolean) as Anime[]
+  const counts = new Map<string, number>()
+  for (const a of animes) for (const g of a.genres) counts.set(g, (counts.get(g) ?? 0) + 1)
+  const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([g]) => g)
+  if (ranked.length === 0) return fallback.slice(0, topN)
+  return ranked.slice(0, topN)
+}
+
 export function HomeTab({ favoriteGenres, onAnimePress }: Props) {
-  const [trending, setTrending] = useState<Anime[]>([])
-  const [seasonal, setSeasonal] = useState<Anime[]>([])
-  const [loading, setLoading] = useState(true)
+  const [trending,   setTrending]   = useState<Anime[]>([])
+  const [seasonal,   setSeasonal]   = useState<Anime[]>([])
+  const [forYou,     setForYou]     = useState<Anime[]>([])
+  const [forYouGenres, setForYouGenres] = useState<string[]>([])
+  const [loading,    setLoading]    = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const [swipeMap, setSwipeMap] = useState<Record<number, SwipeResult>>({})
+  const [swipeMap,   setSwipeMap]   = useState<Record<number, SwipeResult>>({})
 
   const load = async () => {
-    const [t, s, sm] = await Promise.all([
+    const [t, s, sm, recGenres] = await Promise.all([
       fetchTrending(1, 20),
       fetchCurrentSeason(1, 20),
       getSwipeMap(),
+      pickRecommendedGenres(favoriteGenres, 3),
     ])
     const [tKo, sKo] = await Promise.all([
       translateAnimeList(t),
@@ -89,28 +175,31 @@ export function HomeTab({ favoriteGenres, onAnimePress }: Props) {
     setTrending(tKo)
     setSeasonal(sKo)
     setSwipeMap(sm)
+    setForYouGenres(recGenres)
+
+    // 맞춤 피드: 추천 장르 기반, 이미 swipe한 건 제외
+    if (recGenres.length > 0) {
+      const seen = new Set(Object.keys(sm).map(Number))
+      const fy = await fetchByGenres(recGenres, 1, 30)
+      const filtered = fy.filter((a) => !seen.has(a.id)).slice(0, 12)
+      setForYou(await translateAnimeList(filtered))
+    } else {
+      setForYou([])
+    }
   }
 
-  useEffect(() => {
-    void load().finally(() => setLoading(false))
-  }, [])
+  useEffect(() => { void load().finally(() => setLoading(false)) }, [])
 
   const onRefresh = async () => {
     setRefreshing(true)
+    void hapticLight()
     await load()
     setRefreshing(false)
   }
 
   const topPick = trending[0] ?? null
 
-  if (loading) {
-    return (
-      <View style={styles.loadingWrap}>
-        <ActivityIndicator size="large" color="#9f67ff" />
-        <Text style={styles.loadingText}>애니 불러오는 중...</Text>
-      </View>
-    )
-  }
+  if (loading) return <SkeletonHome />
 
   return (
     <ScrollView
@@ -120,14 +209,14 @@ export function HomeTab({ favoriteGenres, onAnimePress }: Props) {
     >
       {/* ── 오늘의 픽 ── */}
       {topPick ? (
-        <Pressable onPress={() => onAnimePress(topPick)} style={styles.primaryCard}>
+        <Pressable onPress={() => { void hapticLight(); onAnimePress(topPick) }} style={styles.primaryCard}>
           <View style={styles.cardTitleRow}>
             <Sparkles size={12} color="#9f67ff" strokeWidth={2.5} />
             <Text style={styles.cardEyebrow}>오늘의 픽</Text>
           </View>
           <View style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start' }}>
-            <Image
-              source={{ uri: topPick.coverImage }}
+            <ImageWithLoader
+              uri={topPick.coverImage}
               style={{ width: 80, height: 110, borderRadius: 10 }}
               resizeMode="cover"
             />
@@ -149,6 +238,7 @@ export function HomeTab({ favoriteGenres, onAnimePress }: Props) {
           </View>
           <Pressable
             onPress={async () => {
+              void hapticLight()
               await Share.share({ message: `🎌 ${topPick.title} 추천해! AniList에서 확인해봐 → https://anilist.co/anime/${topPick.id}` })
             }}
             style={styles.shareBtn}
@@ -178,6 +268,24 @@ export function HomeTab({ favoriteGenres, onAnimePress }: Props) {
           <Text style={[styles.kpiValue, { color: '#06b6d4' }]}>{seasonal.length}</Text>
         </View>
       </View>
+
+      {/* ── 너를 위한 피드 (개인화) ── */}
+      {forYou.length > 0 ? (
+        <View style={styles.card}>
+          <View style={styles.sectionHeaderRow}>
+            <View style={styles.cardTitleRow}>
+              <Heart size={14} color="#9f67ff" strokeWidth={2.5} fill="#9f67ff" />
+              <Text style={styles.cardTitle}>너 좋아할 만한 거</Text>
+            </View>
+            {forYouGenres.length > 0 ? (
+              <Text style={styles.metaText}>
+                {forYouGenres.map((g) => GENRE_KO[g] ?? g).join(' · ')}
+              </Text>
+            ) : null}
+          </View>
+          <HorizontalAnimeList data={forYou} onPress={onAnimePress} swipeMap={swipeMap} />
+        </View>
+      ) : null}
 
       {/* ── 트렌딩 ── */}
       <View style={styles.card}>
