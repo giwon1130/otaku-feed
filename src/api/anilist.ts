@@ -1,4 +1,5 @@
 import type { Anime, AnimeSeason, ExternalLink, RankingSort } from '../types'
+import { findBestLaftelMatch, laftelItemUrl, searchLaftel } from './laftel'
 
 const ENDPOINT = 'https://graphql.anilist.co'
 
@@ -136,24 +137,98 @@ export async function fetchAnimeById(id: number): Promise<Anime | null> {
 
 // ── 스트리밍 링크 ──────────────────────────────────────────────────────────
 
-// 한국에서 시청 가능한 글로벌 플랫폼
+// AniList externalLinks에서 한국 카탈로그가 있을 가능성이 있는 글로벌 플랫폼.
+// (Netflix/Disney+ 등은 글로벌 라이선스라 한국에 있을 수도, 없을 수도 있음 → "글로벌 카탈로그" 경고 표시)
 const KOREA_GLOBAL_PLATFORMS = new Set([
   'Netflix', 'Disney+', 'YouTube', 'Laftel', 'Wavve', 'Watcha',
   'Naver Series On', 'KakaoTV', 'Seezn', 'Tving',
 ])
 
-export async function fetchAnimeLinks(id: number): Promise<ExternalLink[]> {
-  const data = await query<{ Media: { externalLinks: (ExternalLink & { language: string | null })[] } | null }>(`
-    query($id: Int) {
-      Media(id: $id, type: ANIME) {
-        externalLinks { url site type color language }
+// 라프텔 매칭에서 정말 한국 전용으로 봐도 되는 사이트들 (regional=true 우선 표시)
+const REGIONAL_KR_SITES = new Set([
+  'Laftel', 'Wavve', 'Watcha', 'Naver Series On', 'KakaoTV', 'Seezn', 'Tving',
+])
+
+async function translateEnToKo(text: string): Promise<string | null> {
+  try {
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ko&dt=t&q=${encodeURIComponent(text)}`
+    const res = await fetch(url)
+    const json = await res.json() as unknown[][]
+    const translated = (json[0] as unknown[][])
+      .map((chunk) => (chunk[0] as string) ?? '')
+      .join('')
+      .trim()
+    return translated || null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 한국에서 실제로 시청 가능한 외부 링크.
+ * - 라프텔(라이선스 정확) 결과를 우선 검색해서 prepend
+ * - AniList의 글로벌 STREAMING 링크 중 KR 후보만 합치기
+ *
+ * @param anime 정확한 매칭을 위해 제목들이 필요해서 Anime 객체 전체를 받음
+ */
+export async function fetchAnimeLinks(anime: {
+  id: number
+  title: string
+  titleNative: string
+}): Promise<ExternalLink[]> {
+  // 1) 라프텔 검색용 한국어 키워드 후보 만들기
+  const candidates: string[] = []
+  if (anime.title) candidates.push(anime.title)
+  if (anime.titleNative) candidates.push(anime.titleNative)
+  const koTitle = await translateEnToKo(anime.title)
+  if (koTitle) candidates.push(koTitle)
+
+  // 2) 라프텔 검색은 한국어 키워드로만 의미 있음
+  const laftelKeyword = koTitle ?? anime.title
+  const [laftelItems, anilistData] = await Promise.all([
+    searchLaftel(laftelKeyword),
+    query<{ Media: { externalLinks: (ExternalLink & { language: string | null })[] } | null }>(`
+      query($id: Int) {
+        Media(id: $id, type: ANIME) {
+          externalLinks { url site type color language }
+        }
       }
-    }
-  `, { id })
-  return (data.Media?.externalLinks ?? []).filter((l) =>
-    l.type === 'STREAMING' &&
-    (l.language === 'Korean' || KOREA_GLOBAL_PLATFORMS.has(l.site))
-  )
+    `, { id: anime.id }),
+  ])
+
+  const result: ExternalLink[] = []
+
+  // 3) 라프텔 결과 prepend (가장 정확한 KR 카탈로그)
+  const laftelMatch = findBestLaftelMatch(candidates, laftelItems)
+  if (laftelMatch) {
+    result.push({
+      url: laftelItemUrl(laftelMatch.id),
+      site: 'Laftel',
+      type: 'STREAMING',
+      color: '#7C3AED',
+      regional: true,
+    })
+  }
+
+  // 4) AniList 외부 링크에서 KR 후보 선별
+  const seenSites = new Set<string>(result.map((r) => r.site))
+  const anilistLinks = (anilistData.Media?.externalLinks ?? [])
+    .filter((l) =>
+      l.type === 'STREAMING' &&
+      (l.language === 'Korean' || KOREA_GLOBAL_PLATFORMS.has(l.site))
+    )
+    .filter((l) => !seenSites.has(l.site)) // 라프텔 중복 방지
+    .map<ExternalLink>((l) => ({
+      url: l.url,
+      site: l.site,
+      type: l.type,
+      color: l.color,
+      regional: l.language === 'Korean' || REGIONAL_KR_SITES.has(l.site),
+    }))
+
+  result.push(...anilistLinks)
+
+  return result
 }
 
 // ── 검색 ─────────────────────────────────────────────────────────────────

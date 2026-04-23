@@ -8,7 +8,7 @@ import {
   TextInput,
   View,
 } from 'react-native'
-import { ArrowDownUp, Heart, Search, Share2, Star, Trash2, X } from 'lucide-react-native'
+import { ArrowDownUp, Building2, Heart, Search, Share2, Sparkles, Star, Trash2, X } from 'lucide-react-native'
 import { fetchAnimeById } from '../api/anilist'
 import { translateAnimeList } from '../api/translate'
 import { loadSwipes, removeSwipe } from '../storage'
@@ -18,6 +18,7 @@ import { Toast } from '../components/Toast'
 import { useToast } from '../hooks/useToast'
 import { ImageWithLoader } from '../components/ImageWithLoader'
 import { hapticError, hapticLight, hapticMedium } from '../utils/haptics'
+import { GENRE_KO } from '../constants'
 import type { Anime, SwipeRecord } from '../types'
 
 type ListFilter = 'like' | 'dislike'
@@ -125,6 +126,39 @@ export function MyListTab({ onAnimePress }: Props) {
   const likeCount    = swipes.filter((s) => s.result === 'like').length
   const dislikeCount = swipes.filter((s) => s.result === 'dislike').length
 
+  // ── 취향 인사이트 ──
+  const insight = useMemo(() => {
+    const liked = swipes.filter((s) => s.result === 'like')
+    if (liked.length < 5) return null
+
+    const genreCount = new Map<string, number>()
+    const studioCount = new Map<string, number>()
+    let scoreSum = 0
+    let scoreN = 0
+
+    for (const s of liked) {
+      const a = animeMap[s.animeId]
+      if (!a) continue
+      for (const g of a.genres) {
+        genreCount.set(g, (genreCount.get(g) ?? 0) + 1)
+      }
+      const s0 = a.studios[0]
+      if (s0) studioCount.set(s0, (studioCount.get(s0) ?? 0) + 1)
+      if (a.score) { scoreSum += a.score; scoreN += 1 }
+    }
+
+    const topGenres = [...genreCount.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([g, n]) => ({ name: GENRE_KO[g] ?? g, count: n }))
+    const topStudio = [...studioCount.entries()]
+      .sort((a, b) => b[1] - a[1])[0]
+    const avgScore = scoreN > 0 ? (scoreSum / scoreN / 10) : 0
+
+    if (topGenres.length === 0) return null
+    return { topGenres, topStudio, avgScore, sample: scoreN }
+  }, [swipes, animeMap])
+
   const displayed = useMemo(() => {
     const q = searchQ.trim().toLowerCase()
     const filtered = swipes.filter((s) => {
@@ -178,6 +212,53 @@ export function MyListTab({ onAnimePress }: Props) {
                 <Text style={[styles.kpiValue, { color: '#ef4444' }]}>{dislikeCount}</Text>
               </View>
             </View>
+
+            {/* 취향 인사이트 */}
+            {insight ? (
+              <View style={{
+                backgroundColor: '#1a1a2e', borderRadius: 14,
+                padding: 12, gap: 8,
+                borderWidth: 1, borderColor: '#2d1b69',
+              }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Sparkles size={13} color="#9f67ff" strokeWidth={2.5} />
+                  <Text style={{ color: '#9f67ff', fontSize: 12, fontWeight: '800' }}>너의 취향</Text>
+                  {insight.avgScore > 0 ? (
+                    <Text style={{ color: '#6b6b99', fontSize: 11, marginLeft: 'auto' }}>
+                      평균 ★ {insight.avgScore.toFixed(1)}
+                    </Text>
+                  ) : null}
+                </View>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {insight.topGenres.map((g, i) => (
+                    <View key={g.name} style={{
+                      backgroundColor: i === 0 ? '#7c3aed' : '#2d1b69',
+                      borderRadius: 999,
+                      paddingHorizontal: 10, paddingVertical: 4,
+                      flexDirection: 'row', alignItems: 'center', gap: 4,
+                    }}>
+                      <Text style={{
+                        color: i === 0 ? '#fff' : '#c4b5fd',
+                        fontSize: 12, fontWeight: '800',
+                      }}>{g.name}</Text>
+                      <Text style={{
+                        color: i === 0 ? 'rgba(255,255,255,0.7)' : '#a78bfa',
+                        fontSize: 10, fontWeight: '700',
+                      }}>{g.count}</Text>
+                    </View>
+                  ))}
+                </View>
+                {insight.topStudio ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Building2 size={11} color="#6b6b99" strokeWidth={2.5} />
+                    <Text style={{ color: '#a8a8cc', fontSize: 11, fontWeight: '600' }}>
+                      자주 본 스튜디오: <Text style={{ color: '#f0f0ff', fontWeight: '800' }}>{insight.topStudio[0]}</Text>
+                      <Text style={{ color: '#6b6b99' }}> · {insight.topStudio[1]}편</Text>
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
 
             {/* 필터 */}
             <View style={styles.listTabRow}>

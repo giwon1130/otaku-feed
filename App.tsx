@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ActivityIndicator, Pressable, SafeAreaView, StatusBar, Text, View } from 'react-native'
-import { BarChart2, Heart, Home, LogOut, Shuffle, User } from 'lucide-react-native'
+import { BarChart2, Heart, Home, LogOut, Shuffle, Sparkles, User } from 'lucide-react-native'
 import { loadPrefs, syncLocalToServer } from './src/storage'
 import { apiLogout, apiMe, getToken, type AuthResponse } from './src/api/otakuApi'
 import { styles } from './src/styles'
@@ -30,6 +30,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<TabKey>('home')
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [selectedAnime, setSelectedAnime] = useState<Anime | null>(null)
+  const [editingGenres, setEditingGenres] = useState(false)
 
   // 앱 시작 시 토큰·취향 복원
   useEffect(() => {
@@ -106,6 +107,24 @@ export default function App() {
     )
   }
 
+  // ── 장르 재선택 ──
+  if (editingGenres) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor="#0f0f1a" />
+        <OnboardingScreen
+          mode="edit"
+          initialGenres={prefs?.favoriteGenres ?? []}
+          onCancel={() => setEditingGenres(false)}
+          onDone={(p) => {
+            setPrefs(p)
+            setEditingGenres(false)
+          }}
+        />
+      </SafeAreaView>
+    )
+  }
+
   // ── 메인 ──
   return (
     <SafeAreaView style={styles.container}>
@@ -153,21 +172,36 @@ export default function App() {
           borderWidth: 1, borderColor: '#2a2a4a', padding: 4,
         }}>
           {user ? (
-            <>
-              <View style={{ padding: 12 }}>
-                <Text style={{ color: '#a8a8cc', fontSize: 12, fontWeight: '600' }}>{user.email}</Text>
-              </View>
-              <Pressable
-                onPress={handleLogout}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 8,
-                  padding: 12, borderRadius: 10,
-                }}
-              >
-                <LogOut size={14} color="#ef4444" strokeWidth={2.5} />
-                <Text style={{ color: '#ef4444', fontSize: 13, fontWeight: '700' }}>로그아웃</Text>
-              </Pressable>
-            </>
+            <View style={{ padding: 12 }}>
+              <Text style={{ color: '#a8a8cc', fontSize: 12, fontWeight: '600' }}>{user.email}</Text>
+            </View>
+          ) : null}
+
+          <Pressable
+            onPress={() => { setShowUserMenu(false); setEditingGenres(true) }}
+            style={{
+              flexDirection: 'row', alignItems: 'center', gap: 8,
+              padding: 12, borderRadius: 10,
+            }}
+          >
+            <Sparkles size={14} color="#9f67ff" strokeWidth={2.5} />
+            <Text style={{ color: '#9f67ff', fontSize: 13, fontWeight: '700' }}>장르 다시 고르기</Text>
+            <Text style={{ color: '#6b6b99', fontSize: 11, marginLeft: 'auto' }}>
+              {prefs?.favoriteGenres.length ?? 0}개
+            </Text>
+          </Pressable>
+
+          {user ? (
+            <Pressable
+              onPress={handleLogout}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: 8,
+                padding: 12, borderRadius: 10,
+              }}
+            >
+              <LogOut size={14} color="#ef4444" strokeWidth={2.5} />
+              <Text style={{ color: '#ef4444', fontSize: 13, fontWeight: '700' }}>로그아웃</Text>
+            </Pressable>
           ) : (
             <Pressable
               onPress={() => { setShowUserMenu(false); setStep('auth') }}

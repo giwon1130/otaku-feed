@@ -56,7 +56,7 @@ export function AnimeDetailModal({ anime, onClose, onSelectSimilar }: Props) {
     if (!anime) return
     setLinks([])
     setLinksLoading(true)
-    fetchAnimeLinks(anime.id)
+    fetchAnimeLinks({ id: anime.id, title: anime.title, titleNative: anime.titleNative })
       .then(setLinks)
       .finally(() => setLinksLoading(false))
 
@@ -199,32 +199,55 @@ export function AnimeDetailModal({ anime, onClose, onSelectSimilar }: Props) {
             {linksLoading ? (
               <ActivityIndicator size="small" color="#9f67ff" style={{ alignSelf: 'flex-start' }} />
             ) : links.length > 0 ? (
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                {links.map((link) => {
-                  const color = (link.color ?? PLATFORM_COLOR[link.site]) ?? '#7c3aed'
-                  return (
-                    <Pressable
-                      key={link.url}
-                      onPress={() => void Linking.openURL(link.url)}
-                      style={{
-                        paddingHorizontal: 14, paddingVertical: 9,
-                        borderRadius: 12, borderWidth: 1.5,
-                        borderColor: color + '66',
-                        backgroundColor: color + '22',
-                        flexDirection: 'row', alignItems: 'center', gap: 6,
-                      }}
-                    >
-                      <View style={{
-                        width: 8, height: 8, borderRadius: 4,
-                        backgroundColor: color,
-                      }} />
-                      <Text style={{ color: '#f0f0ff', fontSize: 13, fontWeight: '700' }}>
-                        {link.site}
-                      </Text>
-                    </Pressable>
-                  )
-                })}
-              </View>
+              <>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  {links.map((link) => {
+                    const color = (link.color ?? PLATFORM_COLOR[link.site]) ?? '#7c3aed'
+                    const isRegional = link.regional === true
+                    return (
+                      <Pressable
+                        key={link.url}
+                        onPress={() => void Linking.openURL(link.url)}
+                        style={{
+                          paddingHorizontal: 14, paddingVertical: 9,
+                          borderRadius: 12, borderWidth: 1.5,
+                          borderColor: color + (isRegional ? 'aa' : '55'),
+                          backgroundColor: color + (isRegional ? '33' : '15'),
+                          flexDirection: 'row', alignItems: 'center', gap: 6,
+                        }}
+                      >
+                        <View style={{
+                          width: 8, height: 8, borderRadius: 4,
+                          backgroundColor: color,
+                        }} />
+                        <Text style={{ color: '#f0f0ff', fontSize: 13, fontWeight: '700' }}>
+                          {link.site}
+                        </Text>
+                        {isRegional ? (
+                          <View style={{
+                            backgroundColor: '#10b98133', borderRadius: 999,
+                            paddingHorizontal: 6, paddingVertical: 1, marginLeft: 2,
+                          }}>
+                            <Text style={{ color: '#10b981', fontSize: 9, fontWeight: '900' }}>KR</Text>
+                          </View>
+                        ) : (
+                          <View style={{
+                            backgroundColor: '#6b6b9933', borderRadius: 999,
+                            paddingHorizontal: 6, paddingVertical: 1, marginLeft: 2,
+                          }}>
+                            <Text style={{ color: '#a8a8cc', fontSize: 9, fontWeight: '900' }}>글로벌</Text>
+                          </View>
+                        )}
+                      </Pressable>
+                    )
+                  })}
+                </View>
+                {links.some((l) => l.regional !== true) ? (
+                  <Text style={{ color: '#6b6b99', fontSize: 11, marginTop: 2 }}>
+                    ⚠️ "글로벌" 표시는 해외 카탈로그 기준이라 한국 계정에선 안 보일 수도 있어.
+                  </Text>
+                ) : null}
+              </>
             ) : (
               <Text style={{ color: '#45456b', fontSize: 13, fontWeight: '600' }}>
                 한국에서 볼 수 있는 플랫폼 정보가 없어. 😢

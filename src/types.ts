@@ -14,6 +14,8 @@ export type ExternalLink = {
   site: string
   type: string
   color: string | null
+  /** true: 한국 전용 카탈로그 (라프텔 등). false/undefined: 글로벌 카탈로그 (Netflix 등) — KR 카탈로그와 다를 수 있음. */
+  regional?: boolean
 }
 
 export type Anime = {
