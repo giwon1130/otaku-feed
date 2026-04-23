@@ -1,6 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 
-const CACHE_PREFIX = 'tl2:'
+// tl3: → 옛 description이 400자로 잘린 시절의 번역 캐시 무효화
+//        (캐시 키가 text.slice(0,120)이라 옛 잘린 번역이 새 풀 텍스트에 hit됨)
+const CACHE_PREFIX = 'tl3:'
 const DEEPL_KEY = process.env.EXPO_PUBLIC_DEEPL_API_KEY ?? ''
 const DEEPL_URL = 'https://api-free.deepl.com/v2/translate'
 
@@ -52,10 +54,18 @@ async function translateWithGoogle(text: string): Promise<string | null> {
   }
 }
 
+// djb2 — 충돌 가능성은 있지만 같은 prefix를 가진 다른 길이 텍스트끼리 분리됨
+function hash32(s: string): string {
+  let h = 5381
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0
+  return (h >>> 0).toString(36)
+}
+
 async function translateText(text: string): Promise<string> {
   if (!text?.trim()) return text
 
-  const cacheKey = text.slice(0, 120)
+  // 길이+해시로 키 생성 → 같은 첫 120자 다른 길이 텍스트가 같은 캐시 hit하던 버그 방지
+  const cacheKey = `${text.length}:${hash32(text)}`
   const cached = await getCached(cacheKey)
   if (cached) return cached
 

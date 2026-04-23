@@ -1,4 +1,4 @@
-import type { Anime, AnimeSeason, ExternalLink, RankingSort } from '../types'
+import type { Anime, AnimeSeason, AnimeStatus, ExternalLink, RankingSort, RelationType, SeriesEntry } from '../types'
 import { findBestLaftelMatch, laftelItemUrl, searchLaftel } from './laftel'
 
 const ENDPOINT = 'https://graphql.anilist.co'
@@ -47,7 +47,7 @@ function mapAnime(raw: Record<string, unknown>): Anime {
     season: (raw.season as AnimeSeason | null) ?? null,
     seasonYear: (raw.seasonYear as number | null) ?? null,
     genres: (raw.genres as string[]) ?? [],
-    description: ((raw.description as string) ?? '').replace(/<[^>]*>/g, '').slice(0, 400),
+    description: ((raw.description as string) ?? '').replace(/<[^>]*>/g, ''),
     studios: studios.nodes.map((s) => s.name),
     popularity: (raw.popularity as number) ?? 0,
     source: (raw.source as string) ?? 'OTHER',
@@ -98,6 +98,58 @@ export async function fetchByGenres(genres: string[], page = 1, perPage = 20): P
       }
     }
   `, { page, perPage, genres })
+  return data.Page.media.map(mapAnime)
+}
+
+// ── 취향 분석 (온보딩 카드) ────────────────────────────────────────────────────
+
+/**
+ * 첫 온보딩의 "취향 분석" 단계용 후보.
+ * - genres가 비면 글로벌 인기작
+ * - 있으면 해당 장르 + 최근(2010+) 평점 높은 작품
+ * - 너무 매니악하지 않게 minimumScore=70 + 인기도도 고려
+ *
+ * 사용자가 좋아요 표시한 항목은 일반 SwipeRecord(result='like')로 저장 → 추천에 직접 활용.
+ */
+export async function fetchTasteCandidates(
+  genres: string[],
+  perPage = 24,
+): Promise<Anime[]> {
+  // 장르 in이 있을 땐 sort=POPULARITY_DESC + minimumScore=70
+  // 없을 땐 SCORE_DESC 풀에서 추리되, 너무 옛날 거 빼려고 startDate_greater
+  if (genres.length > 0) {
+    const data = await query<{ Page: { media: Record<string, unknown>[] } }>(`
+      query($perPage: Int, $genres: [String]) {
+        Page(page: 1, perPage: $perPage) {
+          media(
+            type: ANIME,
+            genre_in: $genres,
+            sort: POPULARITY_DESC,
+            averageScore_greater: 70,
+            startDate_greater: 20100000
+          ) {
+            ${ANIME_FIELDS}
+          }
+        }
+      }
+    `, { perPage, genres })
+    return data.Page.media.map(mapAnime)
+  }
+
+  const data = await query<{ Page: { media: Record<string, unknown>[] } }>(`
+    query($perPage: Int) {
+      Page(page: 1, perPage: $perPage) {
+        media(
+          type: ANIME,
+          sort: SCORE_DESC,
+          averageScore_greater: 75,
+          startDate_greater: 20100000
+        ) {
+          ${ANIME_FIELDS}
+        }
+      }
+    }
+  `, { perPage })
   return data.Page.media.map(mapAnime)
 }
 
@@ -286,6 +338,105 @@ export async function searchAnime(keyword: string, page = 1, perPage = 20): Prom
     if (seen.has(a.id)) return false
     seen.add(a.id)
     return true
+  })
+}
+
+// ── 시리즈 (보는 순서) ─────────────────────────────────────────────────────────
+
+// 시리즈 보는 순서에서 의미 있는 관계만 표시.
+// PARENT/SPIN_OFF/ALTERNATIVE/SUMMARY까지 포함하면 노이즈가 많아져서 일단 핵심 4종.
+const SERIES_RELATION_TYPES: ReadonlySet<RelationType> = new Set([
+  'PREQUEL', 'SEQUEL', 'PARENT', 'SIDE_STORY',
+])
+
+// SUMMARY/총집편은 보통 보는 순서 안내에서 제외 (원하면 토글)
+const SERIES_FORMAT_BLACKLIST: ReadonlySet<string> = new Set(['MUSIC'])
+
+/**
+ * AniList relations: 같은 시리즈의 전작/속편/외전 등.
+ * 디테일 모달 "시리즈 보는 순서" 섹션에 표시.
+ *
+ * 정렬: 시즌 연도 ASC → 같은 해면 전작이 먼저 (PREQUEL > PARENT > SIDE_STORY > SEQUEL)
+ */
+export async function fetchAnimeRelations(id: number): Promise<SeriesEntry[]> {
+  const data = await query<{
+    Media: {
+      relations: {
+        edges: {
+          relationType: RelationType
+          node: Record<string, unknown> | null
+        }[]
+      }
+    } | null
+  }>(`
+    query($id: Int) {
+      Media(id: $id, type: ANIME) {
+        relations {
+          edges {
+            relationType(version: 2)
+            node {
+              id
+              type
+              format
+              episodes
+              status
+              season
+              seasonYear
+              averageScore
+              title { english romaji native }
+              coverImage { large extraLarge }
+            }
+          }
+        }
+      }
+    }
+  `, { id })
+
+  const edges = data.Media?.relations?.edges ?? []
+
+  const entries: SeriesEntry[] = []
+  for (const edge of edges) {
+    if (!edge.node) continue
+    if (edge.node.type !== 'ANIME') continue
+    if (!SERIES_RELATION_TYPES.has(edge.relationType)) continue
+    const format = edge.node.format as string | null
+    if (format && SERIES_FORMAT_BLACKLIST.has(format)) continue
+
+    const title = edge.node.title as { english: string | null; romaji: string; native: string }
+    const cover = edge.node.coverImage as { large: string; extraLarge: string }
+    entries.push({
+      id: edge.node.id as number,
+      title: title.english ?? title.romaji,
+      titleNative: title.native,
+      coverImage: cover.extraLarge ?? cover.large,
+      format,
+      episodes: (edge.node.episodes as number | null) ?? null,
+      seasonYear: (edge.node.seasonYear as number | null) ?? null,
+      season: (edge.node.season as AnimeSeason | null) ?? null,
+      score: (edge.node.averageScore as number) ?? 0,
+      status: (edge.node.status as AnimeStatus) ?? 'FINISHED',
+      relationType: edge.relationType,
+    })
+  }
+
+  // 같은 시리즈 안에서 같은 ID가 두 번 나오는 경우 방지 (예: PARENT+PREQUEL)
+  const seen = new Set<number>()
+  const deduped = entries.filter((e) => {
+    if (seen.has(e.id)) return false
+    seen.add(e.id)
+    return true
+  })
+
+  // 정렬: 연도 ASC, 그 다음 관계 우선순위
+  const RELATION_ORDER: Record<RelationType, number> = {
+    PARENT: 0, PREQUEL: 1, SIDE_STORY: 2, SEQUEL: 3,
+    SPIN_OFF: 4, ALTERNATIVE: 5, SUMMARY: 6, ADAPTATION: 7, SOURCE: 8, OTHER: 9,
+  }
+  return deduped.sort((a, b) => {
+    const ya = a.seasonYear ?? 9999
+    const yb = b.seasonYear ?? 9999
+    if (ya !== yb) return ya - yb
+    return RELATION_ORDER[a.relationType] - RELATION_ORDER[b.relationType]
   })
 }
 

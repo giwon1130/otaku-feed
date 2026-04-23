@@ -19,3 +19,29 @@ export const STATUS_KO: Record<string, string> = {
   FINISHED: '완결', RELEASING: '방영 중', NOT_YET_RELEASED: '방영 예정',
   CANCELLED: '취소됨', HIATUS: '휴재 중',
 }
+
+// AniList relationType(version: 2) → 한국어
+// 시리즈 보는 순서에서 의미 있는 것만 매핑.
+export const RELATION_KO: Record<string, string> = {
+  PREQUEL: '전작',
+  SEQUEL: '속편',
+  PARENT: '본편',
+  SIDE_STORY: '외전',
+  SPIN_OFF: '스핀오프',
+  ALTERNATIVE: '대체판',
+  SUMMARY: '총집편',
+  ADAPTATION: '원작',
+  SOURCE: '원작',
+  OTHER: '관련작',
+}
+
+// AniList format → 한국어 (시리즈 카드 보조 라벨)
+export const FORMAT_KO: Record<string, string> = {
+  TV: 'TV',
+  TV_SHORT: 'TV 단편',
+  MOVIE: '극장판',
+  SPECIAL: '스페셜',
+  OVA: 'OVA',
+  ONA: 'ONA',
+  MUSIC: '뮤직',
+}

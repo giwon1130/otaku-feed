@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
 import { ActivityIndicator, Pressable, SafeAreaView, StatusBar, Text, View } from 'react-native'
-import { BarChart2, Heart, Home, LogOut, Shuffle, Sparkles, User } from 'lucide-react-native'
-import { loadPrefs, syncLocalToServer } from './src/storage'
+import { BarChart2, Heart, Home, LogOut, Shuffle, Sparkles, User, Wand2 } from 'lucide-react-native'
+import { loadPrefs, savePrefs, syncLocalToServer } from './src/storage'
 import { apiLogout, apiMe, getToken, type AuthResponse } from './src/api/otakuApi'
 import { styles } from './src/styles'
 import { hapticLight } from './src/utils/haptics'
 import { AuthScreen } from './src/components/AuthScreen'
 import { AnimeDetailModal } from './src/components/AnimeDetailModal'
 import { OnboardingScreen } from './src/components/OnboardingScreen'
+import { TasteOnboardingScreen } from './src/components/TasteOnboardingScreen'
 import { HomeTab } from './src/tabs/HomeTab'
 import { ExploreTab } from './src/tabs/ExploreTab'
 import { SwipeTab } from './src/tabs/SwipeTab'
@@ -21,7 +22,7 @@ const TABS: Array<{ key: TabKey; label: string; Icon: typeof Home }> = [
   { key: 'mylist',  label: '내 목록',  Icon: Heart },
 ]
 
-type AppStep = 'loading' | 'onboarding' | 'auth' | 'main'
+type AppStep = 'loading' | 'onboarding' | 'taste' | 'auth' | 'main'
 
 export default function App() {
   const [step, setStep]       = useState<AppStep>('loading')
@@ -31,6 +32,7 @@ export default function App() {
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [selectedAnime, setSelectedAnime] = useState<Anime | null>(null)
   const [editingGenres, setEditingGenres] = useState(false)
+  const [editingTaste, setEditingTaste] = useState(false)
 
   // 앱 시작 시 토큰·취향 복원
   useEffect(() => {
@@ -47,6 +49,9 @@ export default function App() {
 
       if (!loadedPrefs.onboardingDone) {
         setStep('onboarding')
+      } else if (!loadedPrefs.tasteOnboardingDone) {
+        // 기존 유저(장르만 고른 상태)는 다음 진입 때 taste 단계로 유도
+        setStep('taste')
       } else {
         setStep('main')
       }
@@ -56,7 +61,15 @@ export default function App() {
 
   const handleOnboardingDone = (p: UserPrefs) => {
     setPrefs(p)
-    setStep('auth')    // 온보딩 → 로그인 유도
+    setStep('taste')    // 장르 선택 → 취향 분석으로
+  }
+
+  const handleTasteDone = async (_likedCount: number) => {
+    // 플래그 저장 → 다음 진입 때 다시 안 뜸
+    const next: UserPrefs = { ...(prefs ?? { favoriteGenres: [], onboardingDone: true }), tasteOnboardingDone: true }
+    setPrefs(next)
+    await savePrefs(next)
+    setStep('auth')   // 취향 분석 → 로그인 유도
   }
 
   const handleAuthDone = async (authUser: AuthResponse) => {
@@ -87,12 +100,25 @@ export default function App() {
     )
   }
 
-  // ── 온보딩 ──
+  // ── 온보딩 (장르) ──
   if (step === 'onboarding') {
     return (
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor="#0f0f1a" />
         <OnboardingScreen onDone={handleOnboardingDone} />
+      </SafeAreaView>
+    )
+  }
+
+  // ── 취향 분석 (애니 카드) ──
+  if (step === 'taste') {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor="#0f0f1a" />
+        <TasteOnboardingScreen
+          favoriteGenres={prefs?.favoriteGenres ?? []}
+          onDone={handleTasteDone}
+        />
       </SafeAreaView>
     )
   }
@@ -117,8 +143,34 @@ export default function App() {
           initialGenres={prefs?.favoriteGenres ?? []}
           onCancel={() => setEditingGenres(false)}
           onDone={(p) => {
-            setPrefs(p)
+            // 기존 tasteOnboardingDone 보존
+            const merged: UserPrefs = { ...p, tasteOnboardingDone: prefs?.tasteOnboardingDone ?? false }
+            setPrefs(merged)
+            void savePrefs(merged)
             setEditingGenres(false)
+          }}
+        />
+      </SafeAreaView>
+    )
+  }
+
+  // ── 취향 재분석 ──
+  if (editingTaste) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor="#0f0f1a" />
+        <TasteOnboardingScreen
+          mode="edit"
+          favoriteGenres={prefs?.favoriteGenres ?? []}
+          onCancel={() => setEditingTaste(false)}
+          onDone={async () => {
+            // 메뉴에서 부른 거니까 main으로 복귀, 플래그는 이미 true 유지
+            if (prefs && !prefs.tasteOnboardingDone) {
+              const next: UserPrefs = { ...prefs, tasteOnboardingDone: true }
+              setPrefs(next)
+              await savePrefs(next)
+            }
+            setEditingTaste(false)
           }}
         />
       </SafeAreaView>
@@ -188,6 +240,20 @@ export default function App() {
             <Text style={{ color: '#9f67ff', fontSize: 13, fontWeight: '700' }}>장르 다시 고르기</Text>
             <Text style={{ color: '#6b6b99', fontSize: 11, marginLeft: 'auto' }}>
               {prefs?.favoriteGenres.length ?? 0}개
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => { setShowUserMenu(false); setEditingTaste(true) }}
+            style={{
+              flexDirection: 'row', alignItems: 'center', gap: 8,
+              padding: 12, borderRadius: 10,
+            }}
+          >
+            <Wand2 size={14} color="#9f67ff" strokeWidth={2.5} />
+            <Text style={{ color: '#9f67ff', fontSize: 13, fontWeight: '700' }}>취향 다시 분석</Text>
+            <Text style={{ color: '#6b6b99', fontSize: 11, marginLeft: 'auto' }}>
+              좋아요한 작품 기반
             </Text>
           </Pressable>
 

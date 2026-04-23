@@ -9,7 +9,7 @@ import {
   View,
 } from 'react-native'
 import { Flame, Heart, Sparkles, Star, TrendingUp } from 'lucide-react-native'
-import { fetchAnimeById, fetchByGenres, fetchCurrentSeason, fetchTrending } from '../api/anilist'
+import { fetchAnimeById, fetchByGenres, fetchCurrentSeason, fetchRecommendations, fetchTrending } from '../api/anilist'
 import { translateAnimeList } from '../api/translate'
 import { GENRE_KO } from '../constants'
 import { styles } from '../styles'
@@ -157,6 +157,8 @@ export function HomeTab({ favoriteGenres, onAnimePress }: Props) {
   const [seasonal,   setSeasonal]   = useState<Anime[]>([])
   const [forYou,     setForYou]     = useState<Anime[]>([])
   const [forYouGenres, setForYouGenres] = useState<string[]>([])
+  const [becauseLiked,        setBecauseLiked]        = useState<Anime[]>([])
+  const [becauseLikedAnchor,  setBecauseLikedAnchor]  = useState<Anime | null>(null)
   const [loading,    setLoading]    = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [swipeMap,   setSwipeMap]   = useState<Record<number, SwipeResult>>({})
@@ -178,13 +180,35 @@ export function HomeTab({ favoriteGenres, onAnimePress }: Props) {
     setForYouGenres(recGenres)
 
     // 맞춤 피드: 추천 장르 기반, 이미 swipe한 건 제외
+    const seenIds = new Set(Object.keys(sm).map(Number))
     if (recGenres.length > 0) {
-      const seen = new Set(Object.keys(sm).map(Number))
       const fy = await fetchByGenres(recGenres, 1, 30)
-      const filtered = fy.filter((a) => !seen.has(a.id)).slice(0, 12)
+      const filtered = fy.filter((a) => !seenIds.has(a.id)).slice(0, 12)
       setForYou(await translateAnimeList(filtered))
     } else {
       setForYou([])
+    }
+
+    // "이거 좋아하는 너에게" — 좋아요한 작품 중 인기/평점 높은 1개 anchor 기반 recommendations
+    const likedSwipes = await loadSwipes().then((sw) => sw.filter((x) => x.result === 'like'))
+    if (likedSwipes.length > 0) {
+      // 최근 좋아요 5개 중 무작위로 1개 anchor (다양성 위해)
+      const recent = likedSwipes.slice(-5)
+      const pick = recent[Math.floor(Math.random() * recent.length)]
+      const anchor = await fetchAnimeById(pick.animeId).catch(() => null)
+      if (anchor) {
+        const [translatedAnchor] = await translateAnimeList([anchor])
+        setBecauseLikedAnchor(translatedAnchor)
+        const recs = await fetchRecommendations(anchor.id, 12).catch(() => [])
+        const filteredRecs = recs.filter((a) => !seenIds.has(a.id)).slice(0, 12)
+        setBecauseLiked(await translateAnimeList(filteredRecs))
+      } else {
+        setBecauseLikedAnchor(null)
+        setBecauseLiked([])
+      }
+    } else {
+      setBecauseLikedAnchor(null)
+      setBecauseLiked([])
     }
   }
 
@@ -268,6 +292,20 @@ export function HomeTab({ favoriteGenres, onAnimePress }: Props) {
           <Text style={[styles.kpiValue, { color: '#06b6d4' }]}>{seasonal.length}</Text>
         </View>
       </View>
+
+      {/* ── 이거 좋아하니까 (anchor 기반 recommendations) ── */}
+      {becauseLikedAnchor && becauseLiked.length > 0 ? (
+        <View style={styles.card}>
+          <View style={styles.sectionHeaderRow}>
+            <View style={styles.cardTitleRow}>
+              <Heart size={14} color="#ec4899" strokeWidth={2.5} fill="#ec4899" />
+              <Text style={styles.cardTitle}>{becauseLikedAnchor.title} 좋아하니까</Text>
+            </View>
+            <Text style={styles.metaText}>비슷한 취향</Text>
+          </View>
+          <HorizontalAnimeList data={becauseLiked} onPress={onAnimePress} swipeMap={swipeMap} />
+        </View>
+      ) : null}
 
       {/* ── 너를 위한 피드 (개인화) ── */}
       {forYou.length > 0 ? (
