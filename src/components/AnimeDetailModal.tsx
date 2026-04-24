@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Modal, ScrollView, StatusBar, Text, View } from 'react-native'
+import { ActivityIndicator, Modal, ScrollView, StatusBar, Text, View } from 'react-native'
 import { fetchAnimeById, fetchAnimeLinks, fetchAnimeRelations, fetchRecommendations } from '../api/anilist'
 import { translateAnimeInfo, translateAnimeList } from '../api/translate'
 import { GenreTag, MetaRow } from './shared'
@@ -82,6 +82,8 @@ export function AnimeDetailModal({ anime, onClose, onSelectSimilar }: Props) {
   // genres가 비어 있으면 stub으로 간주.
   const isStub = anime.genres.length === 0 && !anime.description
   const view: Anime = isStub && enriched ? enriched : anime
+  // stub인데 아직 enriched 못 받았으면 본문이 다 비어 있음 → 상단 로더 표시
+  const isEnriching = isStub && !enriched
 
   return (
     <Modal
@@ -107,6 +109,15 @@ export function AnimeDetailModal({ anime, onClose, onSelectSimilar }: Props) {
             <Text style={{ color: C.inkMuted, fontSize: 13, marginBottom: 12 }}>
               {view.titleNative}
             </Text>
+          ) : null}
+
+          {isEnriching ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+              <ActivityIndicator size="small" color={C.accent} />
+              <Text style={{ color: C.inkMuted, fontSize: 12, fontWeight: '600' }}>
+                상세 정보 불러오는 중…
+              </Text>
+            </View>
           ) : null}
 
           <MetaRow anime={view} />
