@@ -343,14 +343,14 @@ export async function searchAnime(keyword: string, page = 1, perPage = 20): Prom
 
 // ── 시리즈 (보는 순서) ─────────────────────────────────────────────────────────
 
-// 시리즈 보는 순서에서 의미 있는 관계만 표시.
-// PARENT/SPIN_OFF/ALTERNATIVE/SUMMARY까지 포함하면 노이즈가 많아져서 일단 핵심 4종.
+// 시리즈 보는 순서에서 의미 있는 관계 — 사용자 요청으로 ADAPTATION/SOURCE/OTHER 외 전부 표시.
 const SERIES_RELATION_TYPES: ReadonlySet<RelationType> = new Set([
   'PREQUEL', 'SEQUEL', 'PARENT', 'SIDE_STORY',
+  'SPIN_OFF', 'ALTERNATIVE', 'SUMMARY',
 ])
 
-// SUMMARY/총집편은 보통 보는 순서 안내에서 제외 (원하면 토글)
-const SERIES_FORMAT_BLACKLIST: ReadonlySet<string> = new Set(['MUSIC'])
+// 포맷 블랙리스트 비움 — 전체를 다 보고 싶다는 요청에 따라 MUSIC 등도 노출.
+const SERIES_FORMAT_BLACKLIST: ReadonlySet<string> = new Set()
 
 /**
  * AniList relations: 같은 시리즈의 전작/속편/외전 등.
