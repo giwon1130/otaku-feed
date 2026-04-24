@@ -21,10 +21,17 @@ React Native 0.81 + Expo 54 + TypeScript. AniList GraphQL + 라프텔 검색 API
 
 ## 외부 데이터
 
-- **AniList GraphQL** (`src/api/anilist.ts`) — 핵심 카탈로그. 트렌딩/랭킹/장르/시즌/검색/추천/외부링크.
+- **AniList GraphQL** (`src/api/anilist/`) — 핵심 카탈로그. 모듈 분해됨:
+  - `client.ts` — fetch 래퍼 + `AniListError`(네트워크/HTTP/GraphQL 에러 통일 throw)
+  - `fragments.ts` — `ANIME_FIELDS` GraphQL fragment
+  - `mappers.ts` — raw → `Anime`/`SeriesEntry` 변환 (+ `RawMedia`/`RawSeriesNode` 타입)
+  - `discovery.ts` — 트렌딩/랭킹/장르/시즌/취향 후보
+  - `detail.ts` — 단건 조회(5분 TTL + 200캡 LRU 캐시) / 시리즈 / 추천 / 외부링크
+  - `search.ts` — 한↔영 변환 포함 검색
+  - `index.ts` — public 함수 barrel
 - **라프텔 검색** (`src/api/laftel.ts`) — 한국 OTT. AniList 외부링크는 글로벌 카탈로그라 한국 시청 가능 여부가 부정확해서 보강용으로 사용.
   - 영어 제목 → 한국어 자동 번역 → 검색 → fuzzy 매칭 → `is_viewing && !is_expired` 항목만 prepend.
-- **Google 무료 번역** (`src/api/translate.ts`, `anilist.ts`) — KR↔EN. 검색어 번역 + 라프텔 매칭용.
+- **Google 무료 번역** (`src/api/translate.ts`, `anilist/detail.ts`) — KR↔EN. 검색어 번역 + 라프텔 매칭용.
 - **otaku-feed-api** (`src/api/otakuApi.ts`) — 자체 백엔드. 인증 + 좋아요/패스 동기화.
 
 ## 핵심 패턴
@@ -34,16 +41,43 @@ React Native 0.81 + Expo 54 + TypeScript. AniList GraphQL + 라프텔 검색 API
 - **한국어 검색**: 한글 입력 → Google 번역 → AniList 영어 검색 → 결과 머지 (`HANGUL_RE` 체크).
 - **이미지 로더**: `ImageWithLoader` — Skeleton 깜빡임 후 페이드인.
 - **외부링크 regional 플래그**: `regional: true`(라프텔/한국 전용) 우선, `false`(Netflix 등 글로벌)는 KR/글로벌 배지로 시각 구분 + 경고 노출.
-- **시리즈 보는 순서 (`fetchAnimeRelations`)**: AniList `relationType(version: 2)` 사용. main story(PARENT/PREQUEL/SIDE_STORY/SEQUEL) 4종은 연도 ASC로 섞어 시청 순서 유지, 나머지(SPIN_OFF/ALTERNATIVE/SUMMARY)는 타입별 그룹으로 끝쪽에 묶음. 모달에서 그룹이 바뀔 때 세로 디바이더로 시각 구분.
-- **시리즈 카드 navigate**: 디테일 모달 시리즈 카드 탭 → SeriesEntry를 stub Anime으로 변환해서 `onSelectSimilar` 호출. 모달 useEffect의 `fetchAnimeById`가 빈 genres/studios/score를 자동 보강 (`enriched` state, `view = enriched ?? anime`).
+- **시리즈 보는 순서 (`fetchAnimeRelations`)**: AniList `relationType(version: 2)` 사용. main story(PARENT/PREQUEL/SIDE_STORY/SEQUEL) 4종은 연도 ASC로 섞어 시청 순서 유지, 나머지(SPIN_OFF/ALTERNATIVE/SUMMARY)는 타입별 그룹으로 끝쪽에 묶음. 모달에서 그룹이 바뀔 때 세로 디바이더로 시각 구분. 그룹 키/정렬 우선순위는 `src/utils/seriesGroup.ts`에 공유 util.
+- **시리즈 카드 navigate**: 디테일 모달 시리즈 카드 탭 → SeriesEntry를 stub Anime으로 변환해서 `onSelectSimilar` 호출. 모달 useEffect의 `fetchAnimeById`가 빈 genres/studios/score를 자동 보강 (`enriched` state, `view = enriched ?? anime`). enriched 도착 전엔 모달 상단에 "상세 정보 불러오는 중…" 인라인 로더.
 - **추천 anchor 다양화**: 홈 "X 좋아하니까" 섹션은 최근 좋아요 10개를 셔플 → 1차 장르 중복 회피로 최대 3개 anchor 선정 → 각 anchor별로 `fetchRecommendations` 후 별개 캐러셀 렌더.
 - **피드 강제 갱신 (`reloadToken`)**: 장르/취향 재선택 후 `App.tsx`에서 `homeReloadToken` bump → `HomeTab`이 prop으로 받아 useEffect 의존성에 포함 → 즉시 재로드. (탭 마운트 의존이 아니라서 사용자가 같은 탭에 머물러도 갱신됨.)
+- **AniListError + Toast**: `query<T>()`가 네트워크/HTTP 4xx·5xx/GraphQL 오류를 모두 `AniListError`로 throw. UI는 `useToast` + `<Toast>`로 사용자에게 알림 (`STRINGS.errors.*`). 429/5xx 등은 메시지가 분기됨.
+- **단건 메모리 캐시**: `fetchAnimeById`에 5분 TTL + 200엔트리 LRU. 모달 재진입/탭 간 같은 ID 조회 시 즉시 응답. `clearAnimeCache()`로 로그아웃 때 비움.
+- **로그아웃 시 로컬 정리**: `clearLocalUserData()`가 swipes/검색기록/취향(favoriteGenres만)을 비움. onboarding 플래그·deviceId는 보존. 호출 측에서 `clearAnimeCache()`도 같이 부름.
+
+## 공용 컴포넌트 (`src/components/shared/`)
+
+배럴 export(`shared/index.ts`)로 일괄 import. 디자인 토큰은 `C_TOKENS`(`src/styles.ts`).
+
+| 컴포넌트 | 용도 |
+|----------|------|
+| `ScoreBadge` | 별 + 점수. `sm`/`md`/`lg`. score 0이면 렌더 안 함 |
+| `GenreTag` | 장르 칩 (`solid`/`soft`). `GENRE_KO`로 한국어 변환 |
+| `MetaRow` | Anime의 score/episodes/year+season/studio/status 한 줄 |
+| `RelationBadge` | 시리즈 관계 배지(SEQUEL/PREQUEL 등). `relationColors()` export |
+| `AnimeCard` / `AnimeMiniCard` | 130×185 / 110×156 카드. 좋아요·패스 배지 |
+
+## 디테일 모달 섹션 (`src/components/detail/`)
+
+`AnimeDetailModal`은 오케스트레이터 역할만 (state + 섹션 조립). 각 섹션은 prop만 받음.
+
+| 파일 | 역할 |
+|------|------|
+| `DetailHeader` | 배너 이미지 + 닫기 버튼 + 커버 썸네일 |
+| `WhereToWatch` | 한국 시청 가능 플랫폼 (라프텔 우선) |
+| `Synopsis` | 줄거리(번역/HTML strip 포함) |
+| `SeriesOrder` | 시리즈 보는 순서(그룹 디바이더 + RelationBadge) |
+| `SimilarList` | 비슷한 작품 캐러셀 (`AnimeMiniCard`) |
 
 ## 인증
 
 - 카카오 / 구글 SSO (`@react-native-kakao/user`, `@react-native-google-signin/google-signin`).
 - Expo Go에선 안 돼. **dev client 빌드 필요** (`npx expo run:ios --device`).
-- 토큰은 AsyncStorage(`apiSetToken`/`getToken`).
+- JWT 저장: 현재 AsyncStorage(`getToken`/`saveToken`/`clearToken`). `expo-secure-store` 패키지·plugin은 등록돼있고(`app.json`), `getToken`엔 SecureStore 마이그레이션 코드도 준비돼있지만 **다음 네이티브 풀빌드 전까지는 AsyncStorage 유지** (현재 dev build 호환성). 리빌드 시 `src/api/otakuApi.ts`의 TODO 주석 따라 SecureStore로 복귀.
 
 ## 개발 환경
 
@@ -54,7 +88,10 @@ React Native 0.81 + Expo 54 + TypeScript. AniList GraphQL + 라프텔 검색 API
 npm install
 
 # 타입 체크
-npx tsc --noEmit
+npm run typecheck   # = tsc --noEmit
+
+# 단위 테스트 (node:test + --experimental-strip-types, 외부 deps 없음)
+npm test
 
 # Metro만 띄우기 (이미 dev client 폰에 있을 때)
 npx expo start --dev-client
@@ -186,19 +223,40 @@ cd .. && LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 \
 > 다음에 빠르게 하려면 `Podfile.properties.json`에 `"apple.ccacheEnabled": "true"`
 > 추가 → 두 번째 빌드부터 3-5배 빠름 (변경 안 된 pod은 ccache 히트).
 
+## i18n / 문자열
+
+- 사용자에게 보이는 반복 문자열(특히 throw하는 에러 메시지)은 `src/i18n/strings.ts`의 `STRINGS` 객체로 모아둠. 다국어 필요해지면 로케일별 파일로 분리하기 쉬운 구조.
+- 한 곳에서만 쓰이는 라벨은 굳이 옮기지 않아도 됨. 두 곳 이상 반복될 때 옮긴다.
+
+## 테스트
+
+- Node 22.6+ 의 native test runner + `--experimental-strip-types`로 외부 deps 없이 실행. `npm test` (스크립트는 `node --experimental-strip-types --test 'src/**/*.test.ts'`).
+- 현재 커버:
+  - `src/utils/seriesGroup.test.ts` — 그룹 키/정렬 우선순위
+  - `src/api/anilist/mappers.test.ts` — `mapAnime`/`mapSeriesEntry` 폴백·HTML strip 등
+- import 경로는 native ESM 규칙상 **`.ts` 확장자** 명시 필요. `tsconfig.json`에 `allowImportingTsExtensions: true` 설정됨.
+- 타입 전용 import(`import type`)는 type stripping에서 제거되므로 확장자 안 붙여도 됨.
+
 ## 작업 규약
 
 - **타입 우선**: 새 응답 필드는 `src/types.ts`에 먼저 정의, 컴포넌트는 그 타입을 import.
-- **외부 API는 항상 try/catch + fallback**: 라프텔/번역 API 죽었다고 모달 전체가 깨지면 안 됨.
-- **새 화면/컴포넌트 색상 팔레트**: 보라(`#9f67ff`/`#7c3aed`/`#2d1b69`) 강조, 배경(`#0f0f1a`/`#1a1a2e`/`#2a2a4a`), 텍스트(`#f0f0ff`/`#a8a8cc`/`#6b6b99`/`#45456b`).
+- **외부 API는 항상 try/catch + fallback**: 라프텔/번역 API 죽었다고 모달 전체가 깨지면 안 됨. AniList는 `AniListError`를 받으면 useToast로 표시.
+- **새 화면/컴포넌트 색상 팔레트**: 보라(`#9f67ff`/`#7c3aed`/`#2d1b69`) 강조, 배경(`#0f0f1a`/`#1a1a2e`/`#2a2a4a`), 텍스트(`#f0f0ff`/`#a8a8cc`/`#6b6b99`/`#45456b`). 또는 `C_TOKENS` 참조.
+- **공용 컴포넌트 우선**: 카드/배지/장르 칩 같은 반복 UI는 `src/components/shared/`에서 가져다 씀. 비슷한 인라인 JSX 중복 보이면 shared로 올린다.
 - **한국어 카피**: 친근한 반말 톤 ("좋아요한 애니가 없어", "너 좋아할 만한 거", "어디서 볼 수 있어?").
 - **햅틱**: 액션마다 `hapticLight`/`hapticMedium`/`hapticError`. 버튼 누르면 무조건 light 이상.
+- **FlatList 성능**: 긴 리스트는 `windowSize`/`initialNumToRender`/`maxToRenderPerBatch`/`removeClippedSubviews` 명시.
 
 ## 최근 변경 (역순)
 
 | 커밋 | 요약 |
 |------|------|
-| _다음_ | 시리즈 그룹 디바이더 + 멀티 anchor 캐러셀 + 취향 재분석 즉시 갱신 + navigate 풀메타 보강 |
+| `2b8f583` | stub 진입 시 디테일 모달 상단 로딩 인디케이터 추가 |
+| `23a03e9` | dev 빌드 호환성 위해 JWT를 AsyncStorage로 임시 복귀 (SecureStore는 다음 풀빌드 때) |
+| `cc522e3` | 공용 컴포넌트/모듈 분해 + 에러처리(AniListError + Toast) + 메모리 캐시 + FlatList 가상화 + i18n 기초 + node:test 11개 + 로그아웃 로컬 정리 |
+| `f4f59e2` | 로그인 사용자가 매번 taste check로 돌아가던 무한루프 수정 |
+| `4868185` | 로그인 상태에서 취향 분석 후 auth 화면 재노출되던 버그 수정 |
+| `f6f613d` | 시리즈 그룹 디바이더 + 멀티 anchor 캐러셀 + 취향 재분석 즉시 갱신 + navigate 풀메타 보강 |
 | `3463096` | 시리즈 관계 필터 확장 (SPIN_OFF/ALTERNATIVE/SUMMARY까지 노출, MUSIC 블랙리스트 제거) |
 | `043b4a0` | 디테일 줄거리 잘림 fix + 시리즈 보는 순서 + 취향 분석 온보딩 |
 | `2517f55` | 라프텔 통합 + ExternalLink regional 플래그 + ExploreTab 장르 필터 + MyListTab 인사이트 카드 + 장르 재선택 |
