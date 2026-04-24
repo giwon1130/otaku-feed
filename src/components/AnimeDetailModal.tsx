@@ -49,20 +49,32 @@ function stripHtml(text: string): string {
 // 시리즈 관계 라벨 색상 (한 눈에 전작/속편 구분)
 function relationBadgeBg(rel: RelationType): string {
   switch (rel) {
-    case 'PREQUEL':    return '#1e3a5f'  // 청록 — 먼저
-    case 'PARENT':     return '#3a1e5f'  // 보라 — 본편
-    case 'SIDE_STORY': return '#5f3a1e'  // 갈색 — 외전
-    case 'SEQUEL':     return '#1e5f3a'  // 초록 — 다음
-    default:           return '#2d1b69'
+    case 'PREQUEL':     return '#1e3a5f'  // 청록 — 먼저
+    case 'PARENT':      return '#3a1e5f'  // 보라 — 본편
+    case 'SIDE_STORY':  return '#5f3a1e'  // 갈색 — 외전
+    case 'SEQUEL':      return '#1e5f3a'  // 초록 — 다음
+    case 'SPIN_OFF':    return '#5f1e4a'  // 자홍 — 스핀오프
+    case 'ALTERNATIVE': return '#5f5f1e'  // 머스타드 — 대체판
+    case 'SUMMARY':     return '#3a3a3a'  // 회색 — 총집편
+    default:            return '#2d1b69'
   }
 }
+// 시리즈 그룹 키 — main story 4종은 한 묶음으로 보고, 나머지는 자기 타입이 곧 그룹.
+function seriesGroupKey(rel: RelationType): string {
+  return (rel === 'PARENT' || rel === 'PREQUEL' || rel === 'SIDE_STORY' || rel === 'SEQUEL')
+    ? 'main' : rel
+}
+
 function relationBadgeFg(rel: RelationType): string {
   switch (rel) {
-    case 'PREQUEL':    return '#7dd3fc'
-    case 'PARENT':     return '#d8b4fe'
-    case 'SIDE_STORY': return '#fdba74'
-    case 'SEQUEL':     return '#86efac'
-    default:           return '#c4b5fd'
+    case 'PREQUEL':     return '#7dd3fc'
+    case 'PARENT':      return '#d8b4fe'
+    case 'SIDE_STORY':  return '#fdba74'
+    case 'SEQUEL':      return '#86efac'
+    case 'SPIN_OFF':    return '#f9a8d4'
+    case 'ALTERNATIVE': return '#fde68a'
+    case 'SUMMARY':     return '#c0c0c0'
+    default:            return '#c4b5fd'
   }
 }
 
@@ -73,6 +85,9 @@ export function AnimeDetailModal({ anime, onClose, onSelectSimilar }: Props) {
   const [similarLoading, setSimilarLoading] = useState(false)
   const [series,        setSeries]        = useState<SeriesEntry[]>([])
   const [seriesLoading, setSeriesLoading] = useState(false)
+  // 시리즈에서 navigate된 stub Anime은 genres/studios/score 등이 비어 있어서
+  // fetchAnimeById로 풀 메타를 받아서 표시용으로 보강.
+  const [enriched, setEnriched] = useState<Anime | null>(null)
   // 잘려있던 description을 받았을 때(이전 캐시) 단건 재조회 + 번역으로 풀버전 보강
   const [fullDescription,        setFullDescription]        = useState<string | null>(null)
   const [fullDescriptionLoading, setFullDescriptionLoading] = useState(false)
@@ -100,11 +115,15 @@ export function AnimeDetailModal({ anime, onClose, onSelectSimilar }: Props) {
 
     // props로 받은 description이 옛 캐시 영향으로 잘려 있을 수 있어서
     // 모달 열릴 때 항상 풀 데이터를 다시 받아서 보강.
+    // 동시에 enriched에도 풀 메타 저장 → 시리즈 navigate stub의 빈 genres/studios 채움.
+    setEnriched(null)
     setFullDescription(null)
     setFullDescriptionLoading(true)
     fetchAnimeById(anime.id)
       .then(async (full) => {
-        const raw = full?.description?.trim()
+        if (!full) return
+        setEnriched(full)
+        const raw = full.description?.trim()
         if (!raw) return
         // 한국어 같으면 그대로, 아니면 번역
         const looksKorean = /[\uac00-\ud7af]/.test(raw.slice(0, 80))
@@ -120,6 +139,11 @@ export function AnimeDetailModal({ anime, onClose, onSelectSimilar }: Props) {
 
   if (!anime) return null
 
+  // stub(시리즈 navigate)이면 enriched 우선, 일반 진입이면 props anime 우선.
+  // genres가 비어 있으면 stub으로 간주.
+  const isStub = anime.genres.length === 0 && !anime.description
+  const view: Anime = isStub && enriched ? enriched : anime
+
   return (
     <Modal
       visible={!!anime}
@@ -133,7 +157,7 @@ export function AnimeDetailModal({ anime, onClose, onSelectSimilar }: Props) {
         {/* 배너 이미지 */}
         <View style={{ height: SCREEN_H * 0.32, position: 'relative' }}>
           <Image
-            source={{ uri: anime.bannerImage ?? anime.coverImage }}
+            source={{ uri: view.bannerImage ?? view.coverImage }}
             style={{ width: '100%', height: '100%' }}
             resizeMode="cover"
           />
@@ -156,7 +180,7 @@ export function AnimeDetailModal({ anime, onClose, onSelectSimilar }: Props) {
             shadowColor: '#000', shadowOpacity: 0.6, shadowRadius: 12, shadowOffset: { width: 0, height: 4 },
           }}>
             <Image
-              source={{ uri: anime.coverImage }}
+              source={{ uri: view.coverImage }}
               style={{ width: 90, height: 126, borderRadius: 12, borderWidth: 2, borderColor: '#1a1a2e' }}
               resizeMode="cover"
             />
@@ -170,63 +194,63 @@ export function AnimeDetailModal({ anime, onClose, onSelectSimilar }: Props) {
         >
           {/* 제목 */}
           <Text style={{ color: '#fff', fontSize: 22, fontWeight: '900', lineHeight: 28, marginBottom: 4 }}>
-            {anime.title}
+            {view.title}
           </Text>
-          {anime.titleNative ? (
+          {view.titleNative ? (
             <Text style={{ color: '#6b6b99', fontSize: 13, marginBottom: 12 }}>
-              {anime.titleNative}
+              {view.titleNative}
             </Text>
           ) : null}
 
           {/* 메타 정보 */}
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
-            {anime.score ? (
+            {view.score ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <Star size={14} color="#f59e0b" fill="#f59e0b" strokeWidth={2} />
                 <Text style={{ color: '#f59e0b', fontSize: 13, fontWeight: '700' }}>
-                  {(anime.score / 10).toFixed(1)}
+                  {(view.score / 10).toFixed(1)}
                 </Text>
               </View>
             ) : null}
-            {anime.episodes ? (
+            {view.episodes ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <Tv size={13} color="#a8a8cc" strokeWidth={2} />
-                <Text style={{ color: '#a8a8cc', fontSize: 13 }}>{anime.episodes}화</Text>
+                <Text style={{ color: '#a8a8cc', fontSize: 13 }}>{view.episodes}화</Text>
               </View>
             ) : null}
-            {anime.seasonYear ? (
+            {view.seasonYear ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <Calendar size={13} color="#a8a8cc" strokeWidth={2} />
                 <Text style={{ color: '#a8a8cc', fontSize: 13 }}>
-                  {anime.seasonYear}{anime.season ? ` ${SEASON_KO[anime.season] ?? anime.season}` : ''}
+                  {view.seasonYear}{view.season ? ` ${SEASON_KO[view.season] ?? view.season}` : ''}
                 </Text>
               </View>
             ) : null}
-            {anime.studios[0] ? (
+            {view.studios[0] ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <Building2 size={13} color="#a8a8cc" strokeWidth={2} />
-                <Text style={{ color: '#a8a8cc', fontSize: 13 }}>{anime.studios[0]}</Text>
+                <Text style={{ color: '#a8a8cc', fontSize: 13 }}>{view.studios[0]}</Text>
               </View>
             ) : null}
-            {anime.status ? (
+            {view.status ? (
               <View style={{
-                backgroundColor: anime.status === 'RELEASING' ? 'rgba(16,185,129,0.15)' : 'rgba(107,107,153,0.2)',
+                backgroundColor: view.status === 'RELEASING' ? 'rgba(16,185,129,0.15)' : 'rgba(107,107,153,0.2)',
                 borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2,
               }}>
                 <Text style={{
-                  color: anime.status === 'RELEASING' ? '#10b981' : '#a8a8cc',
+                  color: view.status === 'RELEASING' ? '#10b981' : '#a8a8cc',
                   fontSize: 11, fontWeight: '700',
                 }}>
-                  {STATUS_KO[anime.status] ?? anime.status}
+                  {STATUS_KO[view.status] ?? view.status}
                 </Text>
               </View>
             ) : null}
           </View>
 
           {/* 장르 태그 */}
-          {anime.genres.length > 0 ? (
+          {view.genres.length > 0 ? (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 20 }}>
-              {anime.genres.map((g) => (
+              {view.genres.map((g) => (
                 <View key={g} style={{
                   backgroundColor: '#2d1b69', borderRadius: 999,
                   paddingHorizontal: 10, paddingVertical: 4,
@@ -306,7 +330,7 @@ export function AnimeDetailModal({ anime, onClose, onSelectSimilar }: Props) {
           </View>
 
           {/* 줄거리 */}
-          {(anime.description || fullDescription || fullDescriptionLoading) ? (
+          {(view.description || fullDescription || fullDescriptionLoading) ? (
             <View style={{ gap: 8 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <BookOpen size={14} color="#9f67ff" strokeWidth={2.5} />
@@ -316,9 +340,9 @@ export function AnimeDetailModal({ anime, onClose, onSelectSimilar }: Props) {
                 <Text style={{ color: '#c8c8e8', fontSize: 14, lineHeight: 22 }}>
                   {stripHtml(fullDescription)}
                 </Text>
-              ) : anime.description ? (
+              ) : view.description ? (
                 <Text style={{ color: '#c8c8e8', fontSize: 14, lineHeight: 22 }}>
-                  {stripHtml(anime.description)}
+                  {stripHtml(view.description)}
                   {fullDescriptionLoading ? '…' : ''}
                 </Text>
               ) : fullDescriptionLoading ? (
@@ -337,103 +361,115 @@ export function AnimeDetailModal({ anime, onClose, onSelectSimilar }: Props) {
               {seriesLoading ? (
                 <ActivityIndicator size="small" color="#9f67ff" style={{ alignSelf: 'flex-start' }} />
               ) : (
-                <FlatList
+                <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
-                  data={series}
-                  keyExtractor={(item) => String(item.id)}
-                  contentContainerStyle={{ gap: 10 }}
-                  renderItem={({ item, index }) => {
-                    const isCurrent = false // 시리즈 목록에는 현재 작품이 들어 있지 않음 (relations는 자기 자신 제외)
+                  contentContainerStyle={{ gap: 10, alignItems: 'flex-start' }}
+                >
+                  {series.map((item, index) => {
                     const yearLabel = item.seasonYear ? String(item.seasonYear) : ''
                     const formatLabel = item.format ? (FORMAT_KO[item.format] ?? item.format) : ''
                     const epLabel = item.episodes ? `${item.episodes}화` : ''
                     const sub = [yearLabel, formatLabel, epLabel].filter(Boolean).join(' · ')
+                    const prev = index > 0 ? series[index - 1] : null
+                    const isNewGroup = !prev || seriesGroupKey(prev.relationType) !== seriesGroupKey(item.relationType)
                     return (
-                      <Pressable
-                        onPress={() => {
-                          void hapticLight()
-                          if (onSelectSimilar) {
-                            // SeriesEntry → Anime로 변환해서 모달 재오픈
-                            onSelectSimilar({
-                              id: item.id,
-                              title: item.title,
-                              titleNative: item.titleNative,
-                              coverImage: item.coverImage,
-                              bannerImage: null,
-                              score: item.score,
-                              episodes: item.episodes,
-                              status: item.status,
-                              season: item.season,
-                              seasonYear: item.seasonYear,
-                              genres: [],
-                              description: '',
-                              studios: [],
-                              popularity: 0,
-                              source: 'OTHER',
-                            })
-                          }
-                        }}
-                        style={{ width: 130 }}
+                      <View
+                        key={String(item.id)}
+                        style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}
                       >
-                        {/* 순서 번호 + 관계 라벨 */}
-                        <View style={{
-                          flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6,
-                        }}>
+                        {/* 그룹이 바뀔 때 세로 디바이더 + 그룹 라벨 (첫 그룹 제외) */}
+                        {isNewGroup && index > 0 ? (
                           <View style={{
-                            width: 18, height: 18, borderRadius: 9,
-                            backgroundColor: '#2d1b69', alignItems: 'center', justifyContent: 'center',
-                          }}>
-                            <Text style={{ color: '#c4b5fd', fontSize: 10, fontWeight: '900' }}>
-                              {index + 1}
-                            </Text>
-                          </View>
-                          <View style={{
-                            backgroundColor: relationBadgeBg(item.relationType),
-                            borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2,
-                          }}>
-                            <Text style={{
-                              color: relationBadgeFg(item.relationType),
-                              fontSize: 10, fontWeight: '900',
-                            }}>
-                              {RELATION_KO[item.relationType] ?? item.relationType}
-                            </Text>
-                          </View>
-                        </View>
-                        <ImageWithLoader
-                          uri={item.coverImage}
-                          style={{
-                            width: 130, height: 184, borderRadius: 10,
-                            opacity: isCurrent ? 0.6 : 1,
+                            width: 1, alignSelf: 'stretch',
+                            backgroundColor: '#2a2a4a', marginRight: 4,
+                          }} />
+                        ) : null}
+                        <Pressable
+                          onPress={() => {
+                            void hapticLight()
+                            if (onSelectSimilar) {
+                              // SeriesEntry → Anime로 변환해서 모달 재오픈
+                              // (모달 useEffect에서 fetchAnimeById로 풀 메타 보강함)
+                              onSelectSimilar({
+                                id: item.id,
+                                title: item.title,
+                                titleNative: item.titleNative,
+                                coverImage: item.coverImage,
+                                bannerImage: null,
+                                score: item.score,
+                                episodes: item.episodes,
+                                status: item.status,
+                                season: item.season,
+                                seasonYear: item.seasonYear,
+                                genres: [],
+                                description: '',
+                                studios: [],
+                                popularity: 0,
+                                source: 'OTHER',
+                              })
+                            }
                           }}
-                          resizeMode="cover"
-                        />
-                        <Text
-                          style={{ color: '#f0f0ff', fontSize: 12, fontWeight: '700', marginTop: 6 }}
-                          numberOfLines={2}
+                          style={{ width: 130 }}
                         >
-                          {item.title}
-                        </Text>
-                        {sub ? (
-                          <Text
-                            style={{ color: '#6b6b99', fontSize: 11, marginTop: 2 }}
-                            numberOfLines={1}
-                          >
-                            {sub}
-                          </Text>
-                        ) : null}
-                        {item.score ? (
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 }}>
-                            <Star size={10} color="#f59e0b" fill="#f59e0b" />
-                            <Text style={{ color: '#f59e0b', fontSize: 11, fontWeight: '700' }}>
-                              {(item.score / 10).toFixed(1)}
-                            </Text>
+                          {/* 순서 번호 + 관계 라벨 */}
+                          <View style={{
+                            flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6,
+                          }}>
+                            <View style={{
+                              width: 18, height: 18, borderRadius: 9,
+                              backgroundColor: '#2d1b69', alignItems: 'center', justifyContent: 'center',
+                            }}>
+                              <Text style={{ color: '#c4b5fd', fontSize: 10, fontWeight: '900' }}>
+                                {index + 1}
+                              </Text>
+                            </View>
+                            <View style={{
+                              backgroundColor: relationBadgeBg(item.relationType),
+                              borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2,
+                            }}>
+                              <Text style={{
+                                color: relationBadgeFg(item.relationType),
+                                fontSize: 10, fontWeight: '900',
+                              }}>
+                                {RELATION_KO[item.relationType] ?? item.relationType}
+                              </Text>
+                            </View>
                           </View>
-                        ) : null}
-                      </Pressable>
+                          <ImageWithLoader
+                            uri={item.coverImage}
+                            style={{
+                              width: 130, height: 184, borderRadius: 10,
+                            }}
+                            resizeMode="cover"
+                          />
+                          <Text
+                            style={{ color: '#f0f0ff', fontSize: 12, fontWeight: '700', marginTop: 6 }}
+                            numberOfLines={2}
+                          >
+                            {item.title}
+                          </Text>
+                          {sub ? (
+                            <Text
+                              style={{ color: '#6b6b99', fontSize: 11, marginTop: 2 }}
+                              numberOfLines={1}
+                            >
+                              {sub}
+                            </Text>
+                          ) : null}
+                          {item.score ? (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 }}>
+                              <Star size={10} color="#f59e0b" fill="#f59e0b" />
+                              <Text style={{ color: '#f59e0b', fontSize: 11, fontWeight: '700' }}>
+                                {(item.score / 10).toFixed(1)}
+                              </Text>
+                            </View>
+                          ) : null}
+                        </Pressable>
+                      </View>
                     )
-                  }}
-                />
+                  })}
+                </ScrollView>
               )}
             </View>
           ) : null}

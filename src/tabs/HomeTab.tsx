@@ -22,6 +22,8 @@ import { getSwipeMap, loadSwipes } from '../storage'
 type Props = {
   favoriteGenres: string[]
   onAnimePress: (anime: Anime) => void
+  /** 값이 바뀌면 피드를 강제로 다시 로드 (취향 재분석/장르 재선택 직후 호출용) */
+  reloadToken?: number
 }
 
 function ScoreBadge({ score }: { score: number }) {
@@ -152,13 +154,13 @@ async function pickRecommendedGenres(fallback: string[], topN = 3): Promise<stri
   return ranked.slice(0, topN)
 }
 
-export function HomeTab({ favoriteGenres, onAnimePress }: Props) {
+export function HomeTab({ favoriteGenres, onAnimePress, reloadToken = 0 }: Props) {
   const [trending,   setTrending]   = useState<Anime[]>([])
   const [seasonal,   setSeasonal]   = useState<Anime[]>([])
   const [forYou,     setForYou]     = useState<Anime[]>([])
   const [forYouGenres, setForYouGenres] = useState<string[]>([])
-  const [becauseLiked,        setBecauseLiked]        = useState<Anime[]>([])
-  const [becauseLikedAnchor,  setBecauseLikedAnchor]  = useState<Anime | null>(null)
+  // 여러 좋아요 anchor를 동시에 노출 (다양성). 최대 3개.
+  const [becauseLikedSets, setBecauseLikedSets] = useState<{ anchor: Anime; recs: Anime[] }[]>([])
   const [loading,    setLoading]    = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [swipeMap,   setSwipeMap]   = useState<Record<number, SwipeResult>>({})
@@ -189,30 +191,59 @@ export function HomeTab({ favoriteGenres, onAnimePress }: Props) {
       setForYou([])
     }
 
-    // "이거 좋아하는 너에게" — 좋아요한 작품 중 인기/평점 높은 1개 anchor 기반 recommendations
+    // "이거 좋아하니까" — 최근 좋아요 10개 중 장르 다양성 기준으로 최대 3개 anchor 선정.
     const likedSwipes = await loadSwipes().then((sw) => sw.filter((x) => x.result === 'like'))
     if (likedSwipes.length > 0) {
-      // 최근 좋아요 5개 중 무작위로 1개 anchor (다양성 위해)
-      const recent = likedSwipes.slice(-5)
-      const pick = recent[Math.floor(Math.random() * recent.length)]
-      const anchor = await fetchAnimeById(pick.animeId).catch(() => null)
-      if (anchor) {
-        const [translatedAnchor] = await translateAnimeList([anchor])
-        setBecauseLikedAnchor(translatedAnchor)
-        const recs = await fetchRecommendations(anchor.id, 12).catch(() => [])
-        const filteredRecs = recs.filter((a) => !seenIds.has(a.id)).slice(0, 12)
-        setBecauseLiked(await translateAnimeList(filteredRecs))
-      } else {
-        setBecauseLikedAnchor(null)
-        setBecauseLiked([])
+      const recent = likedSwipes.slice(-10).reverse()  // 최신 우선
+      // 셔플로 같은 풀에서도 매번 다른 anchor 조합 — 사용자 새로고침 시 다양화
+      const shuffled = [...recent].sort(() => Math.random() - 0.5)
+
+      const pickedAnchors: Anime[] = []
+      const usedPrimaryGenres = new Set<string>()
+      const usedIds = new Set<number>()
+      const MAX_ANCHORS = 3
+
+      for (const sw of shuffled) {
+        if (pickedAnchors.length >= MAX_ANCHORS) break
+        if (usedIds.has(sw.animeId)) continue
+        const a = await fetchAnimeById(sw.animeId).catch(() => null)
+        if (!a) continue
+        const primary = a.genres[0]
+        // 같은 1차 장르 anchor는 스킵 (다양성). 단 모든 anchor가 같은 장르면 강제 채움.
+        if (primary && usedPrimaryGenres.has(primary) && pickedAnchors.length > 0) continue
+        pickedAnchors.push(a)
+        usedIds.add(a.id)
+        if (primary) usedPrimaryGenres.add(primary)
       }
+
+      // anchor 부족하면(장르 필터로 다 걸러지면) 후보 그대로 채움
+      if (pickedAnchors.length === 0) {
+        const fallback = await fetchAnimeById(shuffled[0].animeId).catch(() => null)
+        if (fallback) pickedAnchors.push(fallback)
+      }
+
+      const sets: { anchor: Anime; recs: Anime[] }[] = []
+      for (const anchor of pickedAnchors) {
+        const [tAnchor] = await translateAnimeList([anchor])
+        const recs = await fetchRecommendations(anchor.id, 12).catch(() => [])
+        const filteredRecs = recs
+          .filter((a) => !seenIds.has(a.id) && !usedIds.has(a.id))
+          .slice(0, 12)
+        const tRecs = await translateAnimeList(filteredRecs)
+        if (tRecs.length > 0) sets.push({ anchor: tAnchor, recs: tRecs })
+      }
+      setBecauseLikedSets(sets)
     } else {
-      setBecauseLikedAnchor(null)
-      setBecauseLiked([])
+      setBecauseLikedSets([])
     }
   }
 
-  useEffect(() => { void load().finally(() => setLoading(false)) }, [])
+  useEffect(() => {
+    setLoading(true)
+    void load().finally(() => setLoading(false))
+    // reloadToken이 바뀌면 피드 갱신. favoriteGenres 변경(장르 재선택)도 트리거.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reloadToken, favoriteGenres.join(',')])
 
   const onRefresh = async () => {
     setRefreshing(true)
@@ -293,19 +324,21 @@ export function HomeTab({ favoriteGenres, onAnimePress }: Props) {
         </View>
       </View>
 
-      {/* ── 이거 좋아하니까 (anchor 기반 recommendations) ── */}
-      {becauseLikedAnchor && becauseLiked.length > 0 ? (
-        <View style={styles.card}>
+      {/* ── 이거 좋아하니까 (anchor 기반 recommendations, 최대 3개) ── */}
+      {becauseLikedSets.map(({ anchor, recs }) => (
+        <View key={anchor.id} style={styles.card}>
           <View style={styles.sectionHeaderRow}>
             <View style={styles.cardTitleRow}>
               <Heart size={14} color="#ec4899" strokeWidth={2.5} fill="#ec4899" />
-              <Text style={styles.cardTitle}>{becauseLikedAnchor.title} 좋아하니까</Text>
+              <Text style={styles.cardTitle} numberOfLines={1}>
+                {anchor.title} 좋아하니까
+              </Text>
             </View>
             <Text style={styles.metaText}>비슷한 취향</Text>
           </View>
-          <HorizontalAnimeList data={becauseLiked} onPress={onAnimePress} swipeMap={swipeMap} />
+          <HorizontalAnimeList data={recs} onPress={onAnimePress} swipeMap={swipeMap} />
         </View>
-      ) : null}
+      ))}
 
       {/* ── 너를 위한 피드 (개인화) ── */}
       {forYou.length > 0 ? (

@@ -12,10 +12,12 @@ React Native 0.81 + Expo 54 + TypeScript. AniList GraphQL + 라프텔 검색 API
 
 | 탭 | 파일 | 역할 |
 |----|------|------|
-| 홈 | `src/tabs/HomeTab.tsx` | 트렌딩 + 너 좋아할 만한 거(좋아요한 anime의 top3 장르 기반) + 시즌 신작 |
+| 홈 | `src/tabs/HomeTab.tsx` | 트렌딩 + "X 좋아하니까"(최대 3개 anchor) + 너 좋아할 만한 거(top3 장르) + 시즌 신작 |
 | 탐색 | `src/tabs/ExploreTab.tsx` | 검색 + 랭킹(트렌딩/점수/인기) + 장르 필터 칩 |
 | 스와이프 | `src/tabs/SwipeTab.tsx` | 카드 스와이프 (좋아요/패스). 큐가 5개 이하면 자동 prefetch |
 | 내 목록 | `src/tabs/MyListTab.tsx` | 좋아요/패스 리스트 + 검색·정렬 + "너의 취향" 인사이트 카드 |
+
+**온보딩 단계 (`App.tsx` `AppStep`)**: `loading` → `onboarding`(장르) → `taste`(애니 카드 좋아요) → `auth` → `main`. 메뉴에서 장르/취향 재진입도 같은 컴포넌트 재사용 (`mode='edit'`).
 
 ## 외부 데이터
 
@@ -32,6 +34,10 @@ React Native 0.81 + Expo 54 + TypeScript. AniList GraphQL + 라프텔 검색 API
 - **한국어 검색**: 한글 입력 → Google 번역 → AniList 영어 검색 → 결과 머지 (`HANGUL_RE` 체크).
 - **이미지 로더**: `ImageWithLoader` — Skeleton 깜빡임 후 페이드인.
 - **외부링크 regional 플래그**: `regional: true`(라프텔/한국 전용) 우선, `false`(Netflix 등 글로벌)는 KR/글로벌 배지로 시각 구분 + 경고 노출.
+- **시리즈 보는 순서 (`fetchAnimeRelations`)**: AniList `relationType(version: 2)` 사용. main story(PARENT/PREQUEL/SIDE_STORY/SEQUEL) 4종은 연도 ASC로 섞어 시청 순서 유지, 나머지(SPIN_OFF/ALTERNATIVE/SUMMARY)는 타입별 그룹으로 끝쪽에 묶음. 모달에서 그룹이 바뀔 때 세로 디바이더로 시각 구분.
+- **시리즈 카드 navigate**: 디테일 모달 시리즈 카드 탭 → SeriesEntry를 stub Anime으로 변환해서 `onSelectSimilar` 호출. 모달 useEffect의 `fetchAnimeById`가 빈 genres/studios/score를 자동 보강 (`enriched` state, `view = enriched ?? anime`).
+- **추천 anchor 다양화**: 홈 "X 좋아하니까" 섹션은 최근 좋아요 10개를 셔플 → 1차 장르 중복 회피로 최대 3개 anchor 선정 → 각 anchor별로 `fetchRecommendations` 후 별개 캐러셀 렌더.
+- **피드 강제 갱신 (`reloadToken`)**: 장르/취향 재선택 후 `App.tsx`에서 `homeReloadToken` bump → `HomeTab`이 prop으로 받아 useEffect 의존성에 포함 → 즉시 재로드. (탭 마운트 의존이 아니라서 사용자가 같은 탭에 머물러도 갱신됨.)
 
 ## 인증
 
@@ -192,6 +198,9 @@ cd .. && LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 \
 
 | 커밋 | 요약 |
 |------|------|
+| _다음_ | 시리즈 그룹 디바이더 + 멀티 anchor 캐러셀 + 취향 재분석 즉시 갱신 + navigate 풀메타 보강 |
+| `3463096` | 시리즈 관계 필터 확장 (SPIN_OFF/ALTERNATIVE/SUMMARY까지 노출, MUSIC 블랙리스트 제거) |
+| `043b4a0` | 디테일 줄거리 잘림 fix + 시리즈 보는 순서 + 취향 분석 온보딩 |
 | `2517f55` | 라프텔 통합 + ExternalLink regional 플래그 + ExploreTab 장르 필터 + MyListTab 인사이트 카드 + 장르 재선택 |
 | `a7fabc8` | 5개 사용성 업그레이드 (홈 추천 / 검색 한글지원 / 비슷한 작품 / 정렬·검색 / 자동 prefetch) |
 | `117664d` | OAuth, 리팩토링, UI 개선, 아이콘 |

@@ -33,6 +33,8 @@ export default function App() {
   const [selectedAnime, setSelectedAnime] = useState<Anime | null>(null)
   const [editingGenres, setEditingGenres] = useState(false)
   const [editingTaste, setEditingTaste] = useState(false)
+  // 취향/장르 변경 후 HomeTab을 강제 리로드하기 위한 토큰. bump하면 피드 다시 로드.
+  const [homeReloadToken, setHomeReloadToken] = useState(0)
 
   // 앱 시작 시 토큰·취향 복원
   useEffect(() => {
@@ -148,6 +150,7 @@ export default function App() {
             setPrefs(merged)
             void savePrefs(merged)
             setEditingGenres(false)
+            setHomeReloadToken((t) => t + 1)
           }}
         />
       </SafeAreaView>
@@ -171,6 +174,7 @@ export default function App() {
               await savePrefs(next)
             }
             setEditingTaste(false)
+            setHomeReloadToken((t) => t + 1)
           }}
         />
       </SafeAreaView>
@@ -307,7 +311,7 @@ export default function App() {
       </View>
 
       {/* ── 탭 콘텐츠 ── */}
-      {activeTab === 'home'    ? <HomeTab    favoriteGenres={prefs?.favoriteGenres ?? []} onAnimePress={handleAnimePress} /> : null}
+      {activeTab === 'home'    ? <HomeTab    favoriteGenres={prefs?.favoriteGenres ?? []} onAnimePress={handleAnimePress} reloadToken={homeReloadToken} /> : null}
       {activeTab === 'explore' ? <ExploreTab onAnimePress={handleAnimePress} /> : null}
       {activeTab === 'swipe'   ? <SwipeTab   favoriteGenres={prefs?.favoriteGenres ?? []} onAnimePress={handleAnimePress} /> : null}
       {activeTab === 'mylist'  ? <MyListTab  onAnimePress={handleAnimePress} /> : null}

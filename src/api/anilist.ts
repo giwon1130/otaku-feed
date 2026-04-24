@@ -427,12 +427,22 @@ export async function fetchAnimeRelations(id: number): Promise<SeriesEntry[]> {
     return true
   })
 
-  // 정렬: 연도 ASC, 그 다음 관계 우선순위
+  // 정렬: 그룹별로 묶고(main story 먼저), 같은 그룹 안에선 연도 ASC.
+  // main(PARENT/PREQUEL/SIDE_STORY/SEQUEL)은 시청 순서대로 보고 싶으니 type 무시하고 연도순으로 섞음.
+  // 나머지(SPIN_OFF/ALTERNATIVE/SUMMARY)는 type별로 묶어서 끝쪽에 배치.
+  const GROUP_ORDER: Record<string, number> = {
+    main: 0, SPIN_OFF: 1, ALTERNATIVE: 2, SUMMARY: 3, ADAPTATION: 4, SOURCE: 5, OTHER: 6,
+  }
   const RELATION_ORDER: Record<RelationType, number> = {
     PARENT: 0, PREQUEL: 1, SIDE_STORY: 2, SEQUEL: 3,
     SPIN_OFF: 4, ALTERNATIVE: 5, SUMMARY: 6, ADAPTATION: 7, SOURCE: 8, OTHER: 9,
   }
+  const groupKey = (rel: RelationType): string =>
+    (rel === 'PARENT' || rel === 'PREQUEL' || rel === 'SIDE_STORY' || rel === 'SEQUEL') ? 'main' : rel
   return deduped.sort((a, b) => {
+    const ga = GROUP_ORDER[groupKey(a.relationType)] ?? 99
+    const gb = GROUP_ORDER[groupKey(b.relationType)] ?? 99
+    if (ga !== gb) return ga - gb
     const ya = a.seasonYear ?? 9999
     const yb = b.seasonYear ?? 9999
     if (ya !== yb) return ya - yb
