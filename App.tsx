@@ -71,7 +71,8 @@ export default function App() {
     const next: UserPrefs = { ...(prefs ?? { favoriteGenres: [], onboardingDone: true }), tasteOnboardingDone: true }
     setPrefs(next)
     await savePrefs(next)
-    setStep('auth')   // 취향 분석 → 로그인 유도
+    // 이미 로그인된 상태면 auth 스킵 → 바로 메인
+    setStep(user ? 'main' : 'auth')
   }
 
   const handleAuthDone = async (authUser: AuthResponse) => {
