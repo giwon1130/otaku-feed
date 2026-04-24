@@ -17,6 +17,9 @@ import { getSwipeMap } from '../storage'
 import { styles } from '../styles'
 import { Skeleton } from '../components/Skeleton'
 import { ImageWithLoader } from '../components/ImageWithLoader'
+import { Toast } from '../components/Toast'
+import { useToast } from '../hooks/useToast'
+import { STRINGS } from '../i18n/strings'
 import { hapticLight, hapticMedium } from '../utils/haptics'
 import type { Anime, RankingSort, SwipeResult } from '../types'
 
@@ -70,6 +73,7 @@ export function ExploreTab({ onAnimePress }: Props) {
   const [swipeMap,    setSwipeMap]    = useState<Record<number, SwipeResult>>({})
   const [history,     setHistory]     = useState<string[]>([])
   const [genreFilter, setGenreFilter] = useState<string | null>(null)
+  const toast = useToast(2800)
 
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -97,27 +101,34 @@ export function ExploreTab({ onAnimePress }: Props) {
     if (p === 1) setLoading(true)
     else setLoadingMore(true)
 
-    const fetchPromise = genre
-      ? fetchByGenres([genre], p, PER_PAGE)
-      : fetchRanking(s, p, PER_PAGE)
+    try {
+      const fetchPromise = genre
+        ? fetchByGenres([genre], p, PER_PAGE)
+        : fetchRanking(s, p, PER_PAGE)
 
-    const [data, sm] = await Promise.all([
-      fetchPromise,
-      p === 1 ? getSwipeMap() : Promise.resolve(swipeMap),
-    ])
-    const translated = await translateAnimeList(data)
+      const [data, sm] = await Promise.all([
+        fetchPromise,
+        p === 1 ? getSwipeMap() : Promise.resolve(swipeMap),
+      ])
+      const translated = await translateAnimeList(data)
 
-    if (append) {
-      setResults((prev) => [...prev, ...translated])
-    } else {
-      setResults(translated)
-      setSwipeMap(sm)
+      if (append) {
+        setResults((prev) => [...prev, ...translated])
+      } else {
+        setResults(translated)
+        setSwipeMap(sm)
+      }
+      setHasMore(data.length === PER_PAGE)
+      setPage(p)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : STRINGS.errors.rankingFailed
+      toast.show(msg, 'error')
+      if (p === 1) setResults([])
+      setHasMore(false)
+    } finally {
+      if (p === 1) setLoading(false)
+      else setLoadingMore(false)
     }
-    setHasMore(data.length === PER_PAGE)
-    setPage(p)
-
-    if (p === 1) setLoading(false)
-    else setLoadingMore(false)
   }
 
   useEffect(() => { void loadRanking(sort, genreFilter) }, [sort, genreFilter])
@@ -128,10 +139,17 @@ export function ExploreTab({ onAnimePress }: Props) {
     if (!text.trim()) { void loadRanking(sort, genreFilter); return }
     const t = setTimeout(async () => {
       setLoading(true)
-      setResults(await translateAnimeList(await searchAnime(text.trim())))
-      setHasMore(false)
-      setLoading(false)
-      void saveHistory(text.trim())
+      try {
+        setResults(await translateAnimeList(await searchAnime(text.trim())))
+        setHasMore(false)
+        void saveHistory(text.trim())
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : STRINGS.errors.searchFailed
+        toast.show(msg, 'error')
+        setResults([])
+      } finally {
+        setLoading(false)
+      }
     }, 350)
     searchTimeoutRef.current = t
   }
@@ -155,6 +173,7 @@ export function ExploreTab({ onAnimePress }: Props) {
   }
 
   return (
+    <>
     <View style={{ flex: 1 }}>
       <View style={{ padding: 14, gap: 10 }}>
         {/* 검색 */}
@@ -298,6 +317,10 @@ export function ExploreTab({ onAnimePress }: Props) {
           data={results}
           keyExtractor={(item) => String(item.id)}
           contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 40, gap: 8 }}
+          initialNumToRender={12}
+          maxToRenderPerBatch={12}
+          windowSize={7}
+          removeClippedSubviews
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#9f67ff" />
           }
@@ -357,5 +380,7 @@ export function ExploreTab({ onAnimePress }: Props) {
         />
       )}
     </View>
+    <Toast visible={toast.visible} message={toast.message} type={toast.type} />
+    </>
   )
 }

@@ -15,6 +15,10 @@ import { GENRE_KO } from '../constants'
 import { styles } from '../styles'
 import { Skeleton } from '../components/Skeleton'
 import { ImageWithLoader } from '../components/ImageWithLoader'
+import { AnimeCard, GenreTag, ScoreBadge } from '../components/shared'
+import { Toast } from '../components/Toast'
+import { useToast } from '../hooks/useToast'
+import { STRINGS } from '../i18n/strings'
 import { hapticLight } from '../utils/haptics'
 import type { Anime, SwipeResult } from '../types'
 import { getSwipeMap, loadSwipes } from '../storage'
@@ -24,16 +28,6 @@ type Props = {
   onAnimePress: (anime: Anime) => void
   /** 값이 바뀌면 피드를 강제로 다시 로드 (취향 재분석/장르 재선택 직후 호출용) */
   reloadToken?: number
-}
-
-function ScoreBadge({ score }: { score: number }) {
-  if (!score) return null
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-      <Star size={10} color="#f59e0b" strokeWidth={2.5} fill="#f59e0b" />
-      <Text style={styles.animeCardScoreText}>{(score / 10).toFixed(1)}</Text>
-    </View>
-  )
 }
 
 function SkeletonHome() {
@@ -105,23 +99,13 @@ const HorizontalAnimeList = memo(function HorizontalAnimeList({ data, onPress, s
   onPress: (a: Anime) => void
   swipeMap: Record<number, SwipeResult>
 }) {
-  const renderItem = useCallback(({ item }: { item: Anime }) => {
-    const result = swipeMap[item.id]
-    return (
-      <Pressable onPress={() => { void hapticLight(); onPress(item) }} style={styles.hCard}>
-        <ImageWithLoader uri={item.coverImage} style={styles.hCardImage} resizeMode="cover" />
-        {result === 'like' ? (
-          <View style={styles.hCardLikeBadge}>
-            <Star size={10} color="#fff" fill="#fff" />
-          </View>
-        ) : null}
-        <View style={styles.hCardBody}>
-          <Text style={styles.hCardTitle} numberOfLines={2}>{item.title}</Text>
-          <ScoreBadge score={item.score} />
-        </View>
-      </Pressable>
-    )
-  }, [swipeMap, onPress])
+  const renderItem = useCallback(({ item }: { item: Anime }) => (
+    <AnimeCard
+      anime={item}
+      swipeResult={swipeMap[item.id]}
+      onPress={(a) => { void hapticLight(); onPress(a) }}
+    />
+  ), [swipeMap, onPress])
 
   return (
     <FlatList
@@ -131,6 +115,10 @@ const HorizontalAnimeList = memo(function HorizontalAnimeList({ data, onPress, s
       keyExtractor={(item) => String(item.id)}
       contentContainerStyle={styles.hScrollContent}
       renderItem={renderItem}
+      initialNumToRender={6}
+      maxToRenderPerBatch={6}
+      windowSize={5}
+      removeClippedSubviews
     />
   )
 })
@@ -164,8 +152,10 @@ export function HomeTab({ favoriteGenres, onAnimePress, reloadToken = 0 }: Props
   const [loading,    setLoading]    = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [swipeMap,   setSwipeMap]   = useState<Record<number, SwipeResult>>({})
+  const toast = useToast(2800)
 
   const load = async () => {
+    try {
     const [t, s, sm, recGenres] = await Promise.all([
       fetchTrending(1, 20),
       fetchCurrentSeason(1, 20),
@@ -236,6 +226,10 @@ export function HomeTab({ favoriteGenres, onAnimePress, reloadToken = 0 }: Props
     } else {
       setBecauseLikedSets([])
     }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : STRINGS.errors.feedFailed
+      toast.show(msg, 'error')
+    }
   }
 
   useEffect(() => {
@@ -257,6 +251,7 @@ export function HomeTab({ favoriteGenres, onAnimePress, reloadToken = 0 }: Props
   if (loading) return <SkeletonHome />
 
   return (
+    <>
     <ScrollView
       style={styles.scroll}
       contentContainerStyle={styles.content}
@@ -281,11 +276,7 @@ export function HomeTab({ favoriteGenres, onAnimePress, reloadToken = 0 }: Props
               <ScoreBadge score={topPick.score} />
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 4 }}>
                 {topPick.genres.slice(0, 3).map((g) => (
-                  <Text key={g} style={[styles.swipeGenreTagText, {
-                    backgroundColor: '#2d1b69', borderRadius: 999,
-                    paddingHorizontal: 8, paddingVertical: 3, fontSize: 11, fontWeight: '700',
-                    color: '#c4b5fd',
-                  }]}>{GENRE_KO[g] ?? g}</Text>
+                  <GenreTag key={g} genre={g} size="sm" />
                 ))}
               </View>
               <Text style={styles.cardNote} numberOfLines={3}>{topPick.description}</Text>
@@ -380,5 +371,7 @@ export function HomeTab({ favoriteGenres, onAnimePress, reloadToken = 0 }: Props
         <HorizontalAnimeList data={seasonal} onPress={onAnimePress} swipeMap={swipeMap} />
       </View>
     </ScrollView>
+    <Toast visible={toast.visible} message={toast.message} type={toast.type} />
+    </>
   )
 }

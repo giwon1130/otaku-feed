@@ -8,7 +8,7 @@ import {
   TextInput,
   View,
 } from 'react-native'
-import { ArrowDownUp, Building2, Heart, Search, Share2, Sparkles, Star, Trash2, X } from 'lucide-react-native'
+import { ArrowDownUp, Building2, Heart, Search, Share2, Sparkles, Trash2, X } from 'lucide-react-native'
 import { fetchAnimeById } from '../api/anilist'
 import { translateAnimeList } from '../api/translate'
 import { loadSwipes, removeSwipe } from '../storage'
@@ -16,7 +16,9 @@ import { styles } from '../styles'
 import { Skeleton } from '../components/Skeleton'
 import { Toast } from '../components/Toast'
 import { useToast } from '../hooks/useToast'
+import { STRINGS } from '../i18n/strings'
 import { ImageWithLoader } from '../components/ImageWithLoader'
+import { ScoreBadge } from '../components/shared'
 import { hapticError, hapticLight, hapticMedium } from '../utils/haptics'
 import { GENRE_KO } from '../constants'
 import type { Anime, SwipeRecord } from '../types'
@@ -110,7 +112,7 @@ export function MyListTab({ onAnimePress }: Props) {
     void hapticError()
     await removeSwipe(animeId)
     await load()
-    toast.show('목록에서 삭제했어.', 'error')
+    toast.show(STRINGS.toast.removedFromList, 'error')
   }
 
   const handleShareAll = async () => {
@@ -123,8 +125,15 @@ export function MyListTab({ onAnimePress }: Props) {
     await Share.share({ message: `🎌 내가 좋아하는 애니 목록\n· ${titles}` })
   }
 
-  const likeCount    = swipes.filter((s) => s.result === 'like').length
-  const dislikeCount = swipes.filter((s) => s.result === 'dislike').length
+  // 카운트 — swipes 1회 순회로 두 값 동시에 (filter 두 번 X)
+  const { likeCount, dislikeCount } = useMemo(() => {
+    let like = 0, dislike = 0
+    for (const s of swipes) {
+      if (s.result === 'like') like++
+      else if (s.result === 'dislike') dislike++
+    }
+    return { likeCount: like, dislikeCount: dislike }
+  }, [swipes])
 
   // ── 취향 인사이트 ──
   const insight = useMemo(() => {
@@ -194,6 +203,10 @@ export function MyListTab({ onAnimePress }: Props) {
         contentContainerStyle={styles.content}
         data={displayed}
         keyExtractor={(item) => String(item.animeId)}
+        initialNumToRender={10}
+        maxToRenderPerBatch={10}
+        windowSize={7}
+        removeClippedSubviews
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#9f67ff" />
         }
@@ -363,9 +376,10 @@ export function MyListTab({ onAnimePress }: Props) {
               <View style={styles.rankingInfo}>
                 <Text style={styles.rankingTitle} numberOfLines={1}>{anime.title}</Text>
                 <Text style={styles.rankingMeta}>{anime.genres.slice(0, 2).join(' · ')}</Text>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                  <Star size={10} color="#f59e0b" fill="#f59e0b" />
-                  <Text style={styles.rankingScore}>{anime.score ? (anime.score / 10).toFixed(1) : '-'}</Text>
+                <View style={{ marginTop: 2 }}>
+                  {anime.score
+                    ? <ScoreBadge score={anime.score} size="md" />
+                    : <Text style={styles.rankingScore}>-</Text>}
                 </View>
               </View>
               <View style={{ gap: 8, alignItems: 'flex-end' }}>

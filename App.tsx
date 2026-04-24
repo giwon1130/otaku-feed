@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { ActivityIndicator, Pressable, SafeAreaView, StatusBar, Text, View } from 'react-native'
 import { BarChart2, Heart, Home, LogOut, Shuffle, Sparkles, User, Wand2 } from 'lucide-react-native'
-import { loadPrefs, savePrefs, syncLocalToServer } from './src/storage'
+import { clearLocalUserData, loadPrefs, savePrefs, syncLocalToServer } from './src/storage'
 import { apiLogout, apiMe, getToken, type AuthResponse } from './src/api/otakuApi'
+import { clearAnimeCache } from './src/api/anilist'
 import { styles } from './src/styles'
 import { hapticLight } from './src/utils/haptics'
 import { AuthScreen } from './src/components/AuthScreen'
@@ -85,8 +86,15 @@ export default function App() {
 
   const handleLogout = async () => {
     await apiLogout()
+    // 다음 로그인 사용자가 이전 계정 데이터를 보지 않게 로컬 캐시 정리
+    await clearLocalUserData()
+    clearAnimeCache()
+    // prefs도 메모리에서 빈 상태로 갱신 → 즉시 로컬 모드 헤더로
+    setPrefs({ favoriteGenres: [], onboardingDone: true, tasteOnboardingDone: prefs?.tasteOnboardingDone })
     setUser(null)
     setShowUserMenu(false)
+    // 헤더가 "로컬 모드"로 바뀌고 탭들이 재로드되도록
+    setHomeReloadToken((t) => t + 1)
   }
 
   const handleAnimePress = (anime: Anime) => {

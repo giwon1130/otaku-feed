@@ -42,7 +42,8 @@
           "nativeAppKey": "ef9338c2b5ac76546d547e71bda8b580",
           "kakaoLoginEnabled": true
         }
-      ]
+      ],
+      "expo-secure-store"
     ]
   }
 }

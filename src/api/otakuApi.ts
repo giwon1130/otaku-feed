@@ -1,22 +1,40 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import * as SecureStore from 'expo-secure-store'
 
 // Railway 배포 후 실제 URL로 교체
 export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8092'
 
-const TOKEN_KEY = 'otaku:jwt'
+// expo-secure-store의 키는 영숫자/./-/_만 허용 — 콜론 사용 불가
+const TOKEN_KEY = 'otaku_jwt'
+// 구버전(AsyncStorage)에서 사용하던 키 — 마이그레이션용
+const LEGACY_TOKEN_KEY = 'otaku:jwt'
 
 // ── Token 관리 ────────────────────────────────────────────────────────────────
+// JWT는 OS keychain/keystore에 저장 (expo-secure-store).
+// AsyncStorage는 일반 파일이라 디바이스 백업/탈옥 시 노출 위험 → 토큰엔 부적합.
 
 export async function getToken(): Promise<string | null> {
-  return AsyncStorage.getItem(TOKEN_KEY)
+  const token = await SecureStore.getItemAsync(TOKEN_KEY)
+  if (token) return token
+
+  // 구버전(AsyncStorage) 토큰이 남아 있으면 SecureStore로 1회 마이그레이션
+  const legacy = await AsyncStorage.getItem(LEGACY_TOKEN_KEY)
+  if (legacy) {
+    await SecureStore.setItemAsync(TOKEN_KEY, legacy)
+    await AsyncStorage.removeItem(LEGACY_TOKEN_KEY)
+    return legacy
+  }
+  return null
 }
 
 export async function saveToken(token: string): Promise<void> {
-  await AsyncStorage.setItem(TOKEN_KEY, token)
+  await SecureStore.setItemAsync(TOKEN_KEY, token)
 }
 
 export async function clearToken(): Promise<void> {
-  await AsyncStorage.removeItem(TOKEN_KEY)
+  await SecureStore.deleteItemAsync(TOKEN_KEY)
+  // 혹시 남은 레거시 키도 청소
+  await AsyncStorage.removeItem(LEGACY_TOKEN_KEY).catch(() => {})
 }
 
 // ── HTTP 헬퍼 ─────────────────────────────────────────────────────────────────

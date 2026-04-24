@@ -147,6 +147,33 @@ export async function syncLocalToServer(): Promise<void> {
   }
 }
 
+// ── 로그아웃 시 로컬 정리 ─────────────────────────────────────────────────────
+
+/**
+ * 로그아웃 시 호출.
+ * - 스와이프/취향(서버에 동기화된) 로컬 캐시를 비워서 다음 로그인 사용자가
+ *   이전 계정 데이터를 못 보게 함.
+ * - 검색 히스토리도 함께 정리 (계정별 사적 정보).
+ * - deviceId, onboardingDone 같은 디바이스 플래그는 보존.
+ */
+export async function clearLocalUserData(): Promise<void> {
+  await Promise.all([
+    AsyncStorage.removeItem(KEYS.swipes),
+    AsyncStorage.removeItem('otaku:searchHistory'),
+  ])
+  // prefs는 favoriteGenres만 지우고 onboarding 플래그는 유지
+  const raw = await AsyncStorage.getItem(KEYS.prefs)
+  if (raw) {
+    const prev = JSON.parse(raw) as Partial<UserPrefs>
+    const next: UserPrefs = {
+      favoriteGenres: [],
+      onboardingDone: prev.onboardingDone ?? true,
+      tasteOnboardingDone: prev.tasteOnboardingDone,
+    }
+    await AsyncStorage.setItem(KEYS.prefs, JSON.stringify(next))
+  }
+}
+
 // ── 내부 로컬 전용 ────────────────────────────────────────────────────────────
 
 async function loadLocalSwipes(): Promise<SwipeRecord[]> {
