@@ -98,7 +98,15 @@ export default function App() {
     return (
       <SafeAreaView style={[styles.container, { alignItems: 'center', justifyContent: 'center' }]}>
         <StatusBar barStyle="light-content" backgroundColor="#0f0f1a" />
-        <ActivityIndicator size="large" color="#9f67ff" />
+        <View style={{ alignItems: 'center', gap: 16 }}>
+          <Text style={{ color: '#9f67ff', fontSize: 13, fontWeight: '900', letterSpacing: 2 }}>
+            OTAKU FEED
+          </Text>
+          <ActivityIndicator size="large" color="#9f67ff" />
+          <Text style={{ color: '#6b6b99', fontSize: 12, fontWeight: '600' }}>
+            취향 불러오는 중…
+          </Text>
+        </View>
       </SafeAreaView>
     )
   }

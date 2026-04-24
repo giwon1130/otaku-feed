@@ -1,7 +1,7 @@
 import { Pressable, ScrollView, Text, View } from 'react-native'
 import { X } from 'lucide-react-native'
 import { styles } from '../styles'
-import { savePrefs } from '../storage'
+import { loadPrefs, savePrefs } from '../storage'
 import type { UserPrefs } from '../types'
 import { useState } from 'react'
 
@@ -37,7 +37,13 @@ export function OnboardingScreen({ onDone, mode = 'first', initialGenres, onCanc
   }
 
   const handleDone = async () => {
-    const prefs: UserPrefs = { favoriteGenres: selected, onboardingDone: true }
+    // 기존 prefs(특히 tasteOnboardingDone) 보존 — 장르만 갱신
+    const existing = await loadPrefs().catch(() => null)
+    const prefs: UserPrefs = {
+      ...(existing ?? {}),
+      favoriteGenres: selected,
+      onboardingDone: true,
+    }
     await savePrefs(prefs)
     onDone(prefs)
   }

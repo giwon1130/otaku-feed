@@ -37,15 +37,20 @@ export async function getDeviceId(): Promise<string> {
 const DEFAULT_PREFS: UserPrefs = { favoriteGenres: [], onboardingDone: false }
 
 export async function loadPrefs(): Promise<UserPrefs> {
+  // 로컬 캐시 먼저 읽음 — tasteOnboardingDone은 디바이스 로컬 플래그라 서버엔 없음.
+  // 로그인 상태에서도 이 값은 로컬에서 유지해야 매번 taste 단계로 돌아가지 않음.
+  const localRaw = await AsyncStorage.getItem(KEYS.prefs)
+  const local = localRaw ? (JSON.parse(localRaw) as Partial<UserPrefs>) : null
+
   try {
-    // 로그인 상태면 서버에서 가져옴
     if (await isLoggedIn()) {
       const res = await apiGetPrefs()
       const prefs: UserPrefs = {
         favoriteGenres: res.favoriteGenres,
         onboardingDone: res.favoriteGenres.length > 0,
+        tasteOnboardingDone: local?.tasteOnboardingDone ?? false,
       }
-      // 로컬에도 캐시
+      // 로컬에도 캐시 (tasteOnboardingDone 보존)
       await AsyncStorage.setItem(KEYS.prefs, JSON.stringify(prefs))
       return prefs
     }
@@ -53,8 +58,7 @@ export async function loadPrefs(): Promise<UserPrefs> {
     // 서버 실패 시 로컬 폴백
   }
 
-  const raw = await AsyncStorage.getItem(KEYS.prefs)
-  return raw ? { ...DEFAULT_PREFS, ...(JSON.parse(raw) as Partial<UserPrefs>) } : DEFAULT_PREFS
+  return local ? { ...DEFAULT_PREFS, ...local } : DEFAULT_PREFS
 }
 
 export async function savePrefs(prefs: UserPrefs): Promise<void> {

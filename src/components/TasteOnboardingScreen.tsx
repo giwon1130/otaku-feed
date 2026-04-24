@@ -136,8 +136,11 @@ export function TasteOnboardingScreen({
 
       {/* 본문 그리드 */}
       {loading ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
           <ActivityIndicator size="large" color={C.accentGlow} />
+          <Text style={{ color: C.inkSub, fontSize: 12, fontWeight: '600' }}>
+            추천 작품 가져오는 중…
+          </Text>
         </View>
       ) : error ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 20 }}>
