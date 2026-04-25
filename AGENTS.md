@@ -56,6 +56,8 @@ React Native 0.81 + Expo 54 + TypeScript. AniList GraphQL + 라프텔 검색 API
 - **AniList 동시성 제한**: `client.ts`에 in-flight 5개 큐. HomeTab + 디테일 모달 + 검색이 동시에 polling되면 burst 429 가능 → 클라이언트 측 throttle.
 - **Railway keepalive**: `App.tsx` 부팅 시 `apiHealth()` fire-and-forget. 무료/Hobby 플랜은 5분 idle 후 sleep → 첫 사용자 액션 때 5–10초 cold start. 부팅 즉시 ping으로 회피.
 - **logger 래퍼 (`src/utils/logger.ts`)**: 지금은 console로 출력하지만 인터페이스(`logger.captureException(err, ctx)` 등)만 통일해두면 나중에 Sentry로 1파일 교체. 호출부는 그대로.
+- **백엔드 헬스 배지 (`useBackendHealth`)**: 30초 polling + AppState 'active' 복귀 시 즉시 ping. 헤더에 "동기화 중"(✅)/"오프라인"(⚠️) 노출. 로그인 상태일 때만 의미 있음 (로컬 모드는 백엔드 호출 안 함).
+- **테스트 — `node:test` 호환성**: TS parameter property(`constructor(public readonly x)`)를 native `--experimental-strip-types`가 지원 안 함. `AniListError`도 명시적 필드로 작성. 그리고 런타임 import는 `'.ts'` 확장자 필수 (`import type`은 strip되어 무관).
 
 ## 공용 컴포넌트 (`src/components/shared/`)
 

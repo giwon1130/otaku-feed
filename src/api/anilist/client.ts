@@ -1,12 +1,15 @@
-import { STRINGS } from '../../i18n/strings'
+import { STRINGS } from '../../i18n/strings.ts'
 
 const ENDPOINT = 'https://graphql.anilist.co'
 
 /** AniList 호출에서 발생한 에러 — UI 레벨에서 instanceof로 식별 가능. */
 export class AniListError extends Error {
-  constructor(message: string, public readonly cause?: unknown) {
+  // node:test --experimental-strip-types가 TS parameter property를 지원 안 해서 명시적 필드로
+  readonly cause?: unknown
+  constructor(message: string, cause?: unknown) {
     super(message)
     this.name = 'AniListError'
+    this.cause = cause
   }
 }
 

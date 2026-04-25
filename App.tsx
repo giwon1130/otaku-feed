@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ActivityIndicator, Pressable, SafeAreaView, StatusBar, Text, View } from 'react-native'
-import { BarChart2, Heart, Home, LogOut, Shuffle, Sparkles, User, Wand2 } from 'lucide-react-native'
+import { BarChart2, Cloud, CloudOff, Heart, Home, LogOut, Shuffle, Sparkles, User, Wand2 } from 'lucide-react-native'
 import { clearLocalUserData, loadPrefs, savePrefs, syncLocalToServer } from './src/storage'
 import { apiHealth, apiLogout, apiMe, getToken, type AuthResponse } from './src/api/otakuApi'
 import { clearAnimeCache } from './src/api/anilist'
@@ -15,6 +15,7 @@ import { HomeTab } from './src/tabs/HomeTab'
 import { ExploreTab } from './src/tabs/ExploreTab'
 import { SwipeTab } from './src/tabs/SwipeTab'
 import { MyListTab } from './src/tabs/MyListTab'
+import { useBackendHealth } from './src/hooks/useBackendHealth'
 import type { Anime, TabKey, UserPrefs } from './src/types'
 
 const TABS: Array<{ key: TabKey; label: string; Icon: typeof Home }> = [
@@ -37,6 +38,7 @@ export default function App() {
   const [editingTaste, setEditingTaste] = useState(false)
   // 취향/장르 변경 후 HomeTab을 강제 리로드하기 위한 토큰. bump하면 피드 다시 로드.
   const [homeReloadToken, setHomeReloadToken] = useState(0)
+  const backendStatus = useBackendHealth()
 
   // 앱 시작 시 토큰·취향 복원
   useEffect(() => {
@@ -235,11 +237,29 @@ export default function App() {
               </Text>
             </Pressable>
           </View>
-          <Text style={styles.headerSubtitle}>
-            {user
-              ? `${prefs?.favoriteGenres.length ?? 0}개 장르 · 동기화 중`
-              : `${prefs?.favoriteGenres.length ?? 0}개 장르 · 로컬 모드`}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={styles.headerSubtitle}>
+              {user
+                ? `${prefs?.favoriteGenres.length ?? 0}개 장르 · `
+                : `${prefs?.favoriteGenres.length ?? 0}개 장르 · 로컬 모드`}
+            </Text>
+            {/* 백엔드 헬스 배지 — 로그인 상태일 때만 의미 있음 (로컬 모드면 백엔드 호출 없음) */}
+            {user ? (
+              backendStatus === 'online' ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                  <Cloud size={11} color="#a8a8cc" strokeWidth={2.5} />
+                  <Text style={{ color: '#a8a8cc', fontSize: 11, fontWeight: '700' }}>동기화 중</Text>
+                </View>
+              ) : backendStatus === 'offline' ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                  <CloudOff size={11} color="#f59e0b" strokeWidth={2.5} />
+                  <Text style={{ color: '#f59e0b', fontSize: 11, fontWeight: '700' }}>오프라인</Text>
+                </View>
+              ) : (
+                <Text style={{ color: '#6b6b99', fontSize: 11, fontWeight: '700' }}>연결 중…</Text>
+              )
+            ) : null}
+          </View>
         </View>
       </View>
 
