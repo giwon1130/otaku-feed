@@ -48,6 +48,9 @@ React Native 0.81 + Expo 54 + TypeScript. AniList GraphQL + 라프텔 검색 API
 - **AniListError + Toast**: `query<T>()`가 네트워크/HTTP 4xx·5xx/GraphQL 오류를 모두 `AniListError`로 throw. UI는 `useToast` + `<Toast>`로 사용자에게 알림 (`STRINGS.errors.*`). 429/5xx 등은 메시지가 분기됨.
 - **단건 메모리 캐시**: `fetchAnimeById`에 5분 TTL + 200엔트리 LRU. 모달 재진입/탭 간 같은 ID 조회 시 즉시 응답. `clearAnimeCache()`로 로그아웃 때 비움.
 - **로그아웃 시 로컬 정리**: `clearLocalUserData()`가 swipes/검색기록/취향(favoriteGenres만)을 비움. onboarding 플래그·deviceId는 보존. 호출 측에서 `clearAnimeCache()`도 같이 부름.
+- **한국 출시명 우선 표시**: AniList `synonyms[]`에 한국 공식 출시명("장송의 프리렌")이 들어있는 경우가 많음. `mapAnime`에서 한글 비율 가장 높은 항목을 골라 `title`로 채택 → Google 번역 거치지 않음. translate.ts는 입력 한글 ≥30%면 번역 스킵해서 이중 변환 방지. synonyms에도 한국명 없으면 디테일 모달에서 `fetchLaftelKoreanName`으로 라프텔 매칭 결과의 `name`을 가져와 제목 보강.
+- **LoadingBar (indeterminate)**: `src/components/LoadingBar.tsx` — 얇은 progress bar. 디테일 모달 상단에 absolute로 배치, 어떤 fetch(links/series/similar/desc/enrich)라도 진행 중이면 표시.
+- **번역 캐시 prefix bump**: 번역 스키마/소스 바뀔 때 `CACHE_PREFIX`를 `tl3:` → `tl4:` 식으로 올려 기존 잘못된 캐시를 한 번에 무효화. (hash 기반 키라 같은 prefix 안에선 충돌 불가능 → bump가 유일한 무효화 수단.)
 
 ## 공용 컴포넌트 (`src/components/shared/`)
 
@@ -251,6 +254,7 @@ cd .. && LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 \
 
 | 커밋 | 요약 |
 |------|------|
+| (HEAD) | LoadingBar 컴포넌트 + 라프텔 한국 출시명 보강 + 번역 캐시 무효화 (tl3→tl4) + AniList synonyms 우선 |
 | `2b8f583` | stub 진입 시 디테일 모달 상단 로딩 인디케이터 추가 |
 | `23a03e9` | dev 빌드 호환성 위해 JWT를 AsyncStorage로 임시 복귀 (SecureStore는 다음 풀빌드 때) |
 | `cc522e3` | 공용 컴포넌트/모듈 분해 + 에러처리(AniListError + Toast) + 메모리 캐시 + FlatList 가상화 + i18n 기초 + node:test 11개 + 로그아웃 로컬 정리 |

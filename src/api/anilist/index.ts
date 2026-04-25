@@ -9,5 +9,5 @@
  * - search.ts:    검색 (한↔영 변환 포함)
  */
 export { fetchTrending, fetchRanking, fetchByGenres, fetchTasteCandidates, fetchCurrentSeason } from './discovery'
-export { fetchAnimeById, fetchAnimeLinks, fetchAnimeRelations, fetchRecommendations, clearAnimeCache } from './detail'
+export { fetchAnimeById, fetchAnimeLinks, fetchAnimeRelations, fetchRecommendations, fetchLaftelKoreanName, clearAnimeCache } from './detail'
 export { searchAnime } from './search'

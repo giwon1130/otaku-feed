@@ -74,6 +74,30 @@ async function translateEnToKo(text: string): Promise<string | null> {
 }
 
 /**
+ * 라프텔에서 매칭되는 한국 출시명을 가져옴.
+ * AniList synonyms에도 한국어가 없는 작품용 보강.
+ * 입력 title이 이미 한국어면 그대로 사용 (라프텔 호출 스킵).
+ */
+const HANGUL_RE = /[가-힯]/
+export async function fetchLaftelKoreanName(anime: {
+  title: string
+  titleNative: string
+}): Promise<string | null> {
+  // 이미 한국어면 라프텔 호출 안 함
+  if (HANGUL_RE.test(anime.title)) return null
+
+  const koTitle = await translateEnToKo(anime.title)
+  const keyword = koTitle ?? anime.title
+  const items = await searchLaftel(keyword)
+  const candidates = [anime.title, anime.titleNative, koTitle].filter((s): s is string => !!s)
+  const match = findBestLaftelMatch(candidates, items)
+  if (!match) return null
+
+  // 라프텔 name은 "(자막) 장송의 프리렌" 같은 prefix가 붙어 있을 수 있음 → 정리
+  return match.name.replace(/^\([^)]*\)\s*/, '').trim() || null
+}
+
+/**
  * 한국에서 실제로 시청 가능한 외부 링크.
  * - 라프텔(라이선스 정확) 결과를 우선 검색해서 prepend
  * - AniList의 글로벌 STREAMING 링크 중 KR 후보만 합치기

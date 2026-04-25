@@ -1,8 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 
-// tl3: → 옛 description이 400자로 잘린 시절의 번역 캐시 무효화
-//        (캐시 키가 text.slice(0,120)이라 옛 잘린 번역이 새 풀 텍스트에 hit됨)
-const CACHE_PREFIX = 'tl3:'
+// tl4: → AniList synonyms에서 한국 출시명을 우선 사용하도록 바뀐 시점.
+//        기존 tl3 캐시엔 영어 → Google 번역으로 만든 "장례식의 프리렌" 같은
+//        잘못된 한글이 들어있어서 prefix를 bump해 모두 무효화.
+const CACHE_PREFIX = 'tl4:'
 const DEEPL_KEY = process.env.EXPO_PUBLIC_DEEPL_API_KEY ?? ''
 const DEEPL_URL = 'https://api-free.deepl.com/v2/translate'
 

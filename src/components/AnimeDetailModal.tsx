@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ActivityIndicator, Modal, ScrollView, StatusBar, Text, View } from 'react-native'
-import { fetchAnimeById, fetchAnimeLinks, fetchAnimeRelations, fetchRecommendations } from '../api/anilist'
+import { fetchAnimeById, fetchAnimeLinks, fetchAnimeRelations, fetchLaftelKoreanName, fetchRecommendations } from '../api/anilist'
 import { translateAnimeInfo, translateAnimeList } from '../api/translate'
 import { GenreTag, MetaRow } from './shared'
 import { DetailHeader } from './detail/DetailHeader'
@@ -8,6 +8,7 @@ import { WhereToWatch } from './detail/WhereToWatch'
 import { Synopsis } from './detail/Synopsis'
 import { SeriesOrder } from './detail/SeriesOrder'
 import { SimilarList } from './detail/SimilarList'
+import { LoadingBar } from './LoadingBar'
 import { C_TOKENS as C } from '../styles'
 import type { Anime, ExternalLink, SeriesEntry } from '../types'
 
@@ -30,6 +31,8 @@ export function AnimeDetailModal({ anime, onClose, onSelectSimilar }: Props) {
   // 잘려있던 description을 받았을 때(이전 캐시) 단건 재조회 + 번역으로 풀버전 보강
   const [fullDescription,        setFullDescription]        = useState<string | null>(null)
   const [fullDescriptionLoading, setFullDescriptionLoading] = useState(false)
+  // synonyms에 한국명 없는 작품은 라프텔 매칭 결과의 name으로 보강
+  const [laftelKoTitle, setLaftelKoTitle] = useState<string | null>(null)
 
   useEffect(() => {
     if (!anime) return
@@ -58,6 +61,13 @@ export function AnimeDetailModal({ anime, onClose, onSelectSimilar }: Props) {
     setEnriched(null)
     setFullDescription(null)
     setFullDescriptionLoading(true)
+
+    // 라프텔에서 한국 출시명 시도 (영어 제목일 때만 의미 있음)
+    setLaftelKoTitle(null)
+    void fetchLaftelKoreanName({ title: anime.title, titleNative: anime.titleNative })
+      .then((name) => name && setLaftelKoTitle(name))
+      .catch(() => {})
+
     fetchAnimeById(anime.id)
       .then(async (full) => {
         if (!full) return
@@ -84,6 +94,8 @@ export function AnimeDetailModal({ anime, onClose, onSelectSimilar }: Props) {
   const view: Anime = isStub && enriched ? enriched : anime
   // stub인데 아직 enriched 못 받았으면 본문이 다 비어 있음 → 상단 로더 표시
   const isEnriching = isStub && !enriched
+  // 어떤 fetch라도 진행 중이면 상단에 indeterminate progress bar
+  const anyLoading = linksLoading || similarLoading || seriesLoading || fullDescriptionLoading || isEnriching
 
   return (
     <Modal
@@ -95,15 +107,19 @@ export function AnimeDetailModal({ anime, onClose, onSelectSimilar }: Props) {
       <StatusBar barStyle="light-content" backgroundColor={C.bg} />
       <View style={{ flex: 1, backgroundColor: C.bg }}>
         <DetailHeader anime={view} onClose={onClose} />
+        {/* 상단 진행 표시 — header 위에 떠 있어 어떤 섹션이 로딩 중이든 한 곳에서 알 수 있음 */}
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }}>
+          <LoadingBar visible={anyLoading} />
+        </View>
 
         <ScrollView
           style={{ flex: 1 }}
           contentContainerStyle={{ paddingTop: 52, paddingHorizontal: 20, paddingBottom: 80 }}
           showsVerticalScrollIndicator={false}
         >
-          {/* 제목 */}
+          {/* 제목 — 라프텔 한국 출시명이 있으면 우선 표시 */}
           <Text style={{ color: '#fff', fontSize: 22, fontWeight: '900', lineHeight: 28, marginBottom: 4 }}>
-            {view.title}
+            {laftelKoTitle ?? view.title}
           </Text>
           {view.titleNative ? (
             <Text style={{ color: C.inkMuted, fontSize: 13, marginBottom: 12 }}>
