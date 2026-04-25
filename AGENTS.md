@@ -80,7 +80,7 @@ React Native 0.81 + Expo 54 + TypeScript. AniList GraphQL + 라프텔 검색 API
 
 - 카카오 / 구글 SSO (`@react-native-kakao/user`, `@react-native-google-signin/google-signin`).
 - Expo Go에선 안 돼. **dev client 빌드 필요** (`npx expo run:ios --device`).
-- JWT 저장: 현재 AsyncStorage(`getToken`/`saveToken`/`clearToken`). `expo-secure-store` 패키지·plugin은 등록돼있고(`app.json`), `getToken`엔 SecureStore 마이그레이션 코드도 준비돼있지만 **다음 네이티브 풀빌드 전까지는 AsyncStorage 유지** (현재 dev build 호환성). 리빌드 시 `src/api/otakuApi.ts`의 TODO 주석 따라 SecureStore로 복귀.
+- JWT 저장: `expo-secure-store` (iOS Keychain / Android Keystore). 키는 `otaku_jwt` (콜론 허용 안 됨). 옛 AsyncStorage 키(`otaku:jwt`)가 남아 있으면 `getToken` 첫 호출 시 자동으로 SecureStore로 옮기고 삭제 (1회 마이그레이션). 토큰은 디바이스 백업/탈옥에서 보호됨.
 
 ## 개발 환경
 
