@@ -5,6 +5,7 @@
 export const ANIME_FIELDS = `
   id
   title { english romaji native }
+  synonyms
   coverImage { large extraLarge }
   bannerImage
   averageScore

@@ -1,10 +1,11 @@
 import { test } from 'node:test'
 import { strict as assert } from 'node:assert'
-import { mapAnime, mapSeriesEntry, type RawMedia, type RawSeriesNode } from './mappers.ts'
+import { mapAnime, mapSeriesEntry, pickKoreanTitle, type RawMedia, type RawSeriesNode } from './mappers.ts'
 
 const baseRaw: RawMedia = {
   id: 1,
   title: { english: 'Frieren', romaji: 'Sousou no Frieren', native: '葬送のフリーレン' },
+  synonyms: null,
   coverImage: { large: 'https://x/large.jpg', extraLarge: 'https://x/xl.jpg' },
   bannerImage: 'https://x/banner.jpg',
   averageScore: 91,
@@ -54,6 +55,28 @@ test('mapAnime: averageScore null이면 0', () => {
 test('mapAnime: source null이면 OTHER', () => {
   const a = mapAnime({ ...baseRaw, source: null })
   assert.equal(a.source, 'OTHER')
+})
+
+test('mapAnime: synonyms에 한국 출시명 있으면 title로 사용 (영어 무시)', () => {
+  const a = mapAnime({ ...baseRaw, synonyms: ['장송의 프리렌', 'Frieren: Beyond Journey\'s End'] })
+  assert.equal(a.title, '장송의 프리렌')
+})
+
+test('mapAnime: synonyms에 한국명 없으면 영어 fallback', () => {
+  const a = mapAnime({ ...baseRaw, synonyms: ['Frieren: Beyond Journey\'s End', '葬送のフリーレン'] })
+  assert.equal(a.title, 'Frieren')
+})
+
+test('pickKoreanTitle: 여러 한글 후보 중 한글 비율 높은 것', () => {
+  // 둘 다 한글 들어있지만 두 번째가 더 순한글
+  const result = pickKoreanTitle(['Frieren 프리렌', '장송의 프리렌'])
+  assert.equal(result, '장송의 프리렌')
+})
+
+test('pickKoreanTitle: synonyms 비어있으면 null', () => {
+  assert.equal(pickKoreanTitle(null), null)
+  assert.equal(pickKoreanTitle([]), null)
+  assert.equal(pickKoreanTitle(['Frieren', '葬送のフリーレン']), null)
 })
 
 test('mapSeriesEntry: relationType 보존', () => {

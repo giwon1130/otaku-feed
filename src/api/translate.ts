@@ -61,8 +61,18 @@ function hash32(s: string): string {
   return (h >>> 0).toString(36)
 }
 
+// 한글이 일정 비율 이상이면 이미 한국어로 간주 (mapAnime이 synonyms에서 한국명 골라줬을 가능성)
+const HANGUL_RE = /[\uac00-\ud7af]/g
+function looksKorean(text: string): boolean {
+  const matches = text.match(HANGUL_RE)
+  if (!matches) return false
+  return matches.length / text.length >= 0.3
+}
+
 async function translateText(text: string): Promise<string> {
   if (!text?.trim()) return text
+  // 이미 한국어면 번역 스킵 (AniList synonyms에서 받은 한국 출시명 보호)
+  if (looksKorean(text)) return text
 
   // 길이+해시로 키 생성 → 같은 첫 120자 다른 길이 텍스트가 같은 캐시 hit하던 버그 방지
   const cacheKey = `${text.length}:${hash32(text)}`

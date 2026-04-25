@@ -9,6 +9,7 @@ type RawStudios = { nodes: { name: string }[] }
 export type RawMedia = {
   id: number
   title: RawTitle
+  synonyms: string[] | null
   coverImage: RawCover
   bannerImage: string | null
   averageScore: number | null
@@ -23,11 +24,36 @@ export type RawMedia = {
   source: string | null
 }
 
+const HANGUL_RE = /[\uac00-\ud7af]/
+
+/**
+ * AniList synonyms에서 한국 출시명 추출.
+ * 한자/일본어가 섞여 있어도 한글이 들어있으면 한국명으로 간주.
+ * 여러 개면 가장 한글 비율 높은 것 (영문 부제 섞인 경우 회피).
+ */
+export function pickKoreanTitle(synonyms: string[] | null | undefined): string | null {
+  if (!synonyms?.length) return null
+  const hangulOnes = synonyms.filter((s) => HANGUL_RE.test(s))
+  if (hangulOnes.length === 0) return null
+  // 한글 글자 수 / 전체 글자 수가 높은 순 (영문 + 한글 짧게 섞인 거보다 순한글 우선)
+  return hangulOnes
+    .map((s) => ({ s, ratio: hangulRatio(s) }))
+    .sort((a, b) => b.ratio - a.ratio)[0]!.s
+}
+
+function hangulRatio(s: string): number {
+  let h = 0
+  for (const ch of s) if (HANGUL_RE.test(ch)) h++
+  return s.length === 0 ? 0 : h / s.length
+}
+
 /** AniList Media → 앱 내부 Anime 타입 변환. */
 export function mapAnime(raw: RawMedia): Anime {
+  // 한국 공식 출시명이 synonyms에 있으면 우선 사용 (Google 번역 거치지 않음)
+  const koTitle = pickKoreanTitle(raw.synonyms)
   return {
     id: raw.id,
-    title: raw.title.english ?? raw.title.romaji,
+    title: koTitle ?? raw.title.english ?? raw.title.romaji,
     titleNative: raw.title.native,
     coverImage: raw.coverImage.extraLarge ?? raw.coverImage.large,
     bannerImage: raw.bannerImage ?? null,
