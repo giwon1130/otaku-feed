@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { ActivityIndicator, Pressable, SafeAreaView, StatusBar, Text, View } from 'react-native'
 import { BarChart2, Heart, Home, LogOut, Shuffle, Sparkles, User, Wand2 } from 'lucide-react-native'
 import { clearLocalUserData, loadPrefs, savePrefs, syncLocalToServer } from './src/storage'
-import { apiLogout, apiMe, getToken, type AuthResponse } from './src/api/otakuApi'
+import { apiHealth, apiLogout, apiMe, getToken, type AuthResponse } from './src/api/otakuApi'
 import { clearAnimeCache } from './src/api/anilist'
+import { clearSwrCache } from './src/api/anilist/swr'
 import { styles } from './src/styles'
 import { hapticLight } from './src/utils/haptics'
 import { AuthScreen } from './src/components/AuthScreen'
@@ -39,6 +40,10 @@ export default function App() {
 
   // 앱 시작 시 토큰·취향 복원
   useEffect(() => {
+    // Railway 무료/Hobby 플랜은 5분 idle 후 컨테이너 sleep → 첫 API 호출 5–10초.
+    // 부팅 즉시 fire-and-forget ping → 사용자가 첫 액션 할 때쯤엔 깨어 있음.
+    void apiHealth().catch(() => {})
+
     const init = async () => {
       // 저장된 토큰 확인
       const token = await getToken()
@@ -88,6 +93,7 @@ export default function App() {
     await apiLogout()
     // 다음 로그인 사용자가 이전 계정 데이터를 보지 않게 로컬 캐시 정리
     await clearLocalUserData()
+    await clearSwrCache()
     clearAnimeCache()
     // prefs도 메모리에서 빈 상태로 갱신 → 즉시 로컬 모드 헤더로
     setPrefs({ favoriteGenres: [], onboardingDone: true, tasteOnboardingDone: prefs?.tasteOnboardingDone })

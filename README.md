@@ -100,6 +100,12 @@ npm test
 - **로그아웃 시 로컬 정리**: swipes/검색기록/취향/AniList 캐시 비움 (onboarding 플래그·deviceId 보존)
 - **LoadingBar (indeterminate)**: 디테일 모달 상단에 얇은 progress bar. 어떤 fetch라도 진행 중이면 표시
 - **번역 캐시 prefix bump**: 번역 소스/스키마 바뀔 때 `tl3:` → `tl4:` 식으로 prefix를 올려 잘못된 한글 캐시 일괄 무효화
+- **번역 배치**: `translateBatch`가 N개 텍스트를 DeepL 배열 입력 1회로 호출 (20 애니 = 40 → 1 RTT). 인메모리 + AsyncStorage `getMany/setMany`. DeepL 429/456 시 1시간 회로 차단 → Google 직행
+- **AniList SWR**: trending/seasonal 같은 자주 보는 데이터를 AsyncStorage에 영구 캐시 → 부팅 시 즉시 렌더 + 백그라운드 갱신
+- **동시성 제한**: AniList client에 in-flight 5개 큐 (90 req/min 레이트 리밋 방어)
+- **Railway keepalive**: 앱 부팅 시 `apiHealth()` fire-and-forget — Railway 무료 플랜의 cold start (5–10s) 회피
+- **DeepL 쿼터 추적**: `getDeeplQuota()`로 월별 사용량 조회. 80% 도달 시 운영 알림
+- **CI**: GitHub Actions가 push/PR마다 `tsc --noEmit + npm test` 실행
 
 ## iOS 풀빌드 알려진 이슈 (Xcode 26 + Expo 54)
 

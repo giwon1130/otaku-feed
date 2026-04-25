@@ -51,6 +51,11 @@ React Native 0.81 + Expo 54 + TypeScript. AniList GraphQL + 라프텔 검색 API
 - **한국 출시명 우선 표시**: AniList `synonyms[]`에 한국 공식 출시명("장송의 프리렌")이 들어있는 경우가 많음. `mapAnime`에서 한글 비율 가장 높은 항목을 골라 `title`로 채택 → Google 번역 거치지 않음. translate.ts는 입력 한글 ≥30%면 번역 스킵해서 이중 변환 방지. synonyms에도 한국명 없으면 디테일 모달에서 `fetchLaftelKoreanName`으로 라프텔 매칭 결과의 `name`을 가져와 제목 보강.
 - **LoadingBar (indeterminate)**: `src/components/LoadingBar.tsx` — 얇은 progress bar. 디테일 모달 상단에 absolute로 배치, 어떤 fetch(links/series/similar/desc/enrich)라도 진행 중이면 표시.
 - **번역 캐시 prefix bump**: 번역 스키마/소스 바뀔 때 `CACHE_PREFIX`를 `tl3:` → `tl4:` 식으로 올려 기존 잘못된 캐시를 한 번에 무효화. (hash 기반 키라 같은 prefix 안에선 충돌 불가능 → bump가 유일한 무효화 수단.)
+- **번역 배치 (`translateBatch`)**: 호출자는 `translateAnimeList` 그대로 쓰면 내부에서 [t1,d1, t2,d2, ...] 1차원으로 합쳐 DeepL 1회 호출. 20개 애니 = 1 RTT (이전엔 40 RTT). 결과는 인메모리 Map(1000캡) + AsyncStorage `getMany/setMany` 일괄 IO. DeepL이 429/456 받으면 1시간 회로 차단 → Google 직행으로 RTT 낭비 회피. 월별 사용량 추적(`getDeeplQuota()`)으로 80% 도달 시 운영 가시성 확보.
+- **AniList SWR (`api/anilist/swr.ts`)**: trending/seasonal 같은 첫 화면 데이터를 AsyncStorage에 영구 저장. 부팅 시 캐시 즉시 렌더 + 백그라운드 fetch → 두 번째 부팅부터 체감 즉시. 호출 패턴: `swr(key, fetcher).then(({cached, fresh}) => {...})`. 로그아웃 시 `clearSwrCache()`로 비움.
+- **AniList 동시성 제한**: `client.ts`에 in-flight 5개 큐. HomeTab + 디테일 모달 + 검색이 동시에 polling되면 burst 429 가능 → 클라이언트 측 throttle.
+- **Railway keepalive**: `App.tsx` 부팅 시 `apiHealth()` fire-and-forget. 무료/Hobby 플랜은 5분 idle 후 sleep → 첫 사용자 액션 때 5–10초 cold start. 부팅 즉시 ping으로 회피.
+- **logger 래퍼 (`src/utils/logger.ts`)**: 지금은 console로 출력하지만 인터페이스(`logger.captureException(err, ctx)` 등)만 통일해두면 나중에 Sentry로 1파일 교체. 호출부는 그대로.
 
 ## 공용 컴포넌트 (`src/components/shared/`)
 
@@ -254,7 +259,9 @@ cd .. && LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 \
 
 | 커밋 | 요약 |
 |------|------|
-| (HEAD) | LoadingBar 컴포넌트 + 라프텔 한국 출시명 보강 + 번역 캐시 무효화 (tl3→tl4) + AniList synonyms 우선 |
+| (HEAD) | 성능/운영: 번역 배치(40→1 RTT) + AniList SWR 캐시 + 동시성 제한 + Railway keepalive + DeepL 쿼터 추적 + logger 래퍼 + GitHub Actions CI |
+| `80049ec` | JWT를 expo-secure-store(keychain)로 이전 + expo-notifications 추가 (kakao/google native 요구) |
+| `6ff66d7` | LoadingBar 컴포넌트 + 라프텔 한국 출시명 보강 + 번역 캐시 무효화 (tl3→tl4) + AniList synonyms 우선 |
 | `2b8f583` | stub 진입 시 디테일 모달 상단 로딩 인디케이터 추가 |
 | `23a03e9` | dev 빌드 호환성 위해 JWT를 AsyncStorage로 임시 복귀 (SecureStore는 다음 풀빌드 때) |
 | `cc522e3` | 공용 컴포넌트/모듈 분해 + 에러처리(AniListError + Toast) + 메모리 캐시 + FlatList 가상화 + i18n 기초 + node:test 11개 + 로그아웃 로컬 정리 |

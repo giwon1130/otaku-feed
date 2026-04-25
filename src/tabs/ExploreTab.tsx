@@ -20,6 +20,7 @@ import { ImageWithLoader } from '../components/ImageWithLoader'
 import { Toast } from '../components/Toast'
 import { useToast } from '../hooks/useToast'
 import { STRINGS } from '../i18n/strings'
+import { logger } from '../utils/logger'
 import { hapticLight, hapticMedium } from '../utils/haptics'
 import type { Anime, RankingSort, SwipeResult } from '../types'
 
@@ -123,6 +124,7 @@ export function ExploreTab({ onAnimePress }: Props) {
     } catch (e) {
       const msg = e instanceof Error ? e.message : STRINGS.errors.rankingFailed
       toast.show(msg, 'error')
+      logger.captureException(e, { tab: 'explore', sort: s, genre, page: p })
       if (p === 1) setResults([])
       setHasMore(false)
     } finally {
@@ -146,6 +148,7 @@ export function ExploreTab({ onAnimePress }: Props) {
       } catch (e) {
         const msg = e instanceof Error ? e.message : STRINGS.errors.searchFailed
         toast.show(msg, 'error')
+        logger.captureException(e, { tab: 'explore', op: 'search', q: text.trim() })
         setResults([])
       } finally {
         setLoading(false)

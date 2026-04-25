@@ -10,6 +10,8 @@ import {
 } from 'react-native'
 import { Flame, Heart, Sparkles, Star, TrendingUp } from 'lucide-react-native'
 import { fetchAnimeById, fetchByGenres, fetchCurrentSeason, fetchRecommendations, fetchTrending } from '../api/anilist'
+import { swr } from '../api/anilist/swr'
+import { logger } from '../utils/logger'
 import { translateAnimeList } from '../api/translate'
 import { GENRE_KO } from '../constants'
 import { styles } from '../styles'
@@ -156,20 +158,20 @@ export function HomeTab({ favoriteGenres, onAnimePress, reloadToken = 0 }: Props
 
   const load = async () => {
     try {
-    const [t, s, sm, recGenres] = await Promise.all([
-      fetchTrending(1, 20),
-      fetchCurrentSeason(1, 20),
+    // SWR: trending/seasonal은 사용자가 가장 먼저 보는 부분 → 캐시 즉시 표시 + 백그라운드 갱신
+    const [trendingSwr, seasonalSwr, sm, recGenres] = await Promise.all([
+      swr('home:trending', () => fetchTrending(1, 20).then(translateAnimeList)),
+      swr('home:seasonal', () => fetchCurrentSeason(1, 20).then(translateAnimeList)),
       getSwipeMap(),
       pickRecommendedGenres(favoriteGenres, 3),
     ])
-    const [tKo, sKo] = await Promise.all([
-      translateAnimeList(t),
-      translateAnimeList(s),
-    ])
-    setTrending(tKo)
-    setSeasonal(sKo)
+    if (trendingSwr.cached) setTrending(trendingSwr.cached)
+    if (seasonalSwr.cached) setSeasonal(seasonalSwr.cached)
     setSwipeMap(sm)
     setForYouGenres(recGenres)
+    // 백그라운드 갱신 결과를 받으면 교체
+    void trendingSwr.fresh.then((v) => { if (v) setTrending(v) })
+    void seasonalSwr.fresh.then((v) => { if (v) setSeasonal(v) })
 
     // 맞춤 피드: 추천 장르 기반, 이미 swipe한 건 제외
     const seenIds = new Set(Object.keys(sm).map(Number))
@@ -212,23 +214,28 @@ export function HomeTab({ favoriteGenres, onAnimePress, reloadToken = 0 }: Props
         if (fallback) pickedAnchors.push(fallback)
       }
 
-      const sets: { anchor: Anime; recs: Anime[] }[] = []
-      for (const anchor of pickedAnchors) {
-        const [tAnchor] = await translateAnimeList([anchor])
-        const recs = await fetchRecommendations(anchor.id, 12).catch(() => [])
-        const filteredRecs = recs
-          .filter((a) => !seenIds.has(a.id) && !usedIds.has(a.id))
-          .slice(0, 12)
-        const tRecs = await translateAnimeList(filteredRecs)
-        if (tRecs.length > 0) sets.push({ anchor: tAnchor, recs: tRecs })
-      }
-      setBecauseLikedSets(sets)
+      // anchor마다 직렬로 fetch+translate하면 N×라운드트립 → 전부 병렬화
+      const setsRaw = await Promise.all(
+        pickedAnchors.map(async (anchor) => {
+          const [tAnchorList, recs] = await Promise.all([
+            translateAnimeList([anchor]),
+            fetchRecommendations(anchor.id, 12).catch(() => []),
+          ])
+          const filteredRecs = recs
+            .filter((a) => !seenIds.has(a.id) && !usedIds.has(a.id))
+            .slice(0, 12)
+          const tRecs = await translateAnimeList(filteredRecs)
+          return { anchor: tAnchorList[0]!, recs: tRecs }
+        }),
+      )
+      setBecauseLikedSets(setsRaw.filter((s) => s.recs.length > 0))
     } else {
       setBecauseLikedSets([])
     }
     } catch (e) {
       const msg = e instanceof Error ? e.message : STRINGS.errors.feedFailed
       toast.show(msg, 'error')
+      logger.captureException(e, { tab: 'home', favoriteGenres })
     }
   }
 
