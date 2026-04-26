@@ -19,7 +19,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
  * - onFresh가 호출됐을 때만 화면 업데이트 → 같은 데이터면 재렌더 안 함 (얕은 비교).
  */
 
-const PREFIX = 'swr:'
+// swr2: → 캐시 의미가 "translated Anime"에서 "raw English Anime"로 바뀜.
+// 옛 swr: 캐시는 한국어 title 들어있어서 그대로 쓰면 render-then-translate 패턴이 무의미해짐.
+// prefix bump로 자동 무효화. 첫 부팅 한 번만 cold load.
+const PREFIX = 'swr2:'
 
 type Entry<T> = { value: T; storedAt: number }
 

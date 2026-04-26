@@ -8,6 +8,6 @@
  * - detail.ts:    단일 조회 / 시리즈 / 추천 / 외부 링크
  * - search.ts:    검색 (한↔영 변환 포함)
  */
-export { fetchTrending, fetchRanking, fetchByGenres, fetchTasteCandidates, fetchCurrentSeason } from './discovery'
+export { fetchTrending, fetchRanking, fetchByGenres, fetchTasteCandidates, fetchCurrentSeason, fetchHomePrimary } from './discovery'
 export { fetchAnimeById, fetchAnimeLinks, fetchAnimeRelations, fetchRecommendations, fetchLaftelKoreanName, clearAnimeCache } from './detail'
 export { searchAnime } from './search'

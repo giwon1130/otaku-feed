@@ -9,7 +9,7 @@ import {
   View,
 } from 'react-native'
 import { Flame, Heart, Sparkles, Star, TrendingUp } from 'lucide-react-native'
-import { fetchAnimeById, fetchByGenres, fetchCurrentSeason, fetchRecommendations, fetchTrending } from '../api/anilist'
+import { fetchAnimeById, fetchByGenres, fetchHomePrimary, fetchRecommendations } from '../api/anilist'
 import { swr } from '../api/anilist/swr'
 import { logger } from '../utils/logger'
 import { translateAnimeList } from '../api/translate'
@@ -158,20 +158,31 @@ export function HomeTab({ favoriteGenres, onAnimePress, reloadToken = 0 }: Props
 
   const load = async () => {
     try {
-    // SWR: trending/seasonal은 사용자가 가장 먼저 보는 부분 → 캐시 즉시 표시 + 백그라운드 갱신
-    const [trendingSwr, seasonalSwr, sm, recGenres] = await logger.time('home.swrPrimary', () => Promise.all([
-      swr('home:trending', () => fetchTrending(1, 20).then(translateAnimeList)),
-      swr('home:seasonal', () => fetchCurrentSeason(1, 20).then(translateAnimeList)),
+    // SWR + 단일 쿼리(alias): trending+seasonal을 1 RTT로 가져옴.
+    // 캐시는 raw English (Anime[]) → render-then-translate 패턴으로 즉시 화면 채움.
+    const [primarySwr, sm, recGenres] = await logger.time('home.swrPrimary', () => Promise.all([
+      swr('home:primary', () => fetchHomePrimary(20)),
       getSwipeMap(),
       pickRecommendedGenres(favoriteGenres, 3),
     ]))
-    if (trendingSwr.cached) setTrending(trendingSwr.cached)
-    if (seasonalSwr.cached) setSeasonal(seasonalSwr.cached)
     setSwipeMap(sm)
     setForYouGenres(recGenres)
-    // 백그라운드 갱신 결과를 받으면 교체
-    void trendingSwr.fresh.then((v) => { if (v) setTrending(v) })
-    void seasonalSwr.fresh.then((v) => { if (v) setSeasonal(v) })
+
+    // 1) cached가 있으면 영어로 즉시 렌더 + 번역 백그라운드 swap
+    if (primarySwr.cached) {
+      setTrending(primarySwr.cached.trending)
+      setSeasonal(primarySwr.cached.seasonal)
+      void translateAnimeList(primarySwr.cached.trending).then(setTrending)
+      void translateAnimeList(primarySwr.cached.seasonal).then(setSeasonal)
+    }
+    // 2) fresh 도착하면 또 같은 패턴 (영어 → 번역 swap)
+    void primarySwr.fresh.then((fresh) => {
+      if (!fresh) return
+      setTrending(fresh.trending)
+      setSeasonal(fresh.seasonal)
+      void translateAnimeList(fresh.trending).then(setTrending)
+      void translateAnimeList(fresh.seasonal).then(setSeasonal)
+    })
 
     // 맞춤 피드: 추천 장르 기반, 이미 swipe한 건 제외
     // → 영어 우선 렌더 + 번역 swap (체감 ~500ms 빠름)

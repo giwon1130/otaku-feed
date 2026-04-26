@@ -120,3 +120,39 @@ export async function fetchCurrentSeason(page = 1, perPage = 20): Promise<Anime[
   `, { page, perPage, season, year })
   return data.Page.media.map(mapAnime)
 }
+
+// ── 홈 첫 화면 묶음 (Trending + Seasonal in 1 query) ────────────────────────
+// HomeTab은 trending과 seasonal을 항상 같이 보여줌 → GraphQL alias로 1 RTT.
+// 별도 호출 시 ~1.4s (700ms × 2 병렬), 묶으면 ~700ms 한 번.
+type HomePrimaryResponse = {
+  trending: { media: RawMedia[] }
+  seasonal: { media: RawMedia[] }
+}
+
+export async function fetchHomePrimary(perPage = 20): Promise<{ trending: Anime[]; seasonal: Anime[] }> {
+  const now = new Date()
+  const month = now.getMonth() + 1
+  const season: AnimeSeason =
+    month <= 3 ? 'WINTER' : month <= 6 ? 'SPRING' : month <= 9 ? 'SUMMER' : 'FALL'
+  const year = now.getFullYear()
+
+  const data = await query<HomePrimaryResponse>(`
+    query($perPage: Int, $season: MediaSeason, $year: Int) {
+      trending: Page(page: 1, perPage: $perPage) {
+        media(type: ANIME, sort: TRENDING_DESC, status_not: NOT_YET_RELEASED) {
+          ${ANIME_FIELDS}
+        }
+      }
+      seasonal: Page(page: 1, perPage: $perPage) {
+        media(type: ANIME, season: $season, seasonYear: $year, sort: POPULARITY_DESC) {
+          ${ANIME_FIELDS}
+        }
+      }
+    }
+  `, { perPage, season, year })
+
+  return {
+    trending: data.trending.media.map(mapAnime),
+    seasonal: data.seasonal.media.map(mapAnime),
+  }
+}
