@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { ActivityIndicator, Pressable, SafeAreaView, StatusBar, Text, View } from 'react-native'
+import { ActivityIndicator, AppState, Pressable, SafeAreaView, StatusBar, Text, View } from 'react-native'
 import { BarChart2, Cloud, CloudOff, Heart, Home, LogOut, Shuffle, Sparkles, User, Wand2 } from 'lucide-react-native'
-import { clearLocalUserData, loadPrefs, savePrefs, syncLocalToServer } from './src/storage'
+import { clearLocalUserData, flushPending, loadPrefs, savePrefs, syncLocalToServer } from './src/storage'
 import { apiHealth, apiLogout, apiMe, getToken, type AuthResponse } from './src/api/otakuApi'
 import { clearAnimeCache } from './src/api/anilist'
 import { clearSwrCache } from './src/api/anilist/swr'
@@ -38,18 +38,18 @@ export default function App() {
   const [editingTaste, setEditingTaste] = useState(false)
   // 취향/장르 변경 후 HomeTab을 강제 리로드하기 위한 토큰. bump하면 피드 다시 로드.
   const [homeReloadToken, setHomeReloadToken] = useState(0)
-  const backendStatus = useBackendHealth()
+  // 비로그인(로컬 모드) 사용자는 백엔드 호출 안 함 → polling 자체를 끔 (Railway 비용 0)
+  const backendStatus = useBackendHealth(!!user)
 
   // 앱 시작 시 토큰·취향 복원
   useEffect(() => {
-    // Railway 무료/Hobby 플랜은 5분 idle 후 컨테이너 sleep → 첫 API 호출 5–10초.
-    // 부팅 즉시 fire-and-forget ping → 사용자가 첫 액션 할 때쯤엔 깨어 있음.
-    void apiHealth().catch(() => {})
-
     const init = async () => {
-      // 저장된 토큰 확인
+      // 저장된 토큰 확인 — 토큰이 있을 때만 백엔드 호출 (비로그인은 Railway 호출 0)
       const token = await getToken()
       if (token) {
+        // Railway 무료/Hobby 플랜은 5분 idle 후 컨테이너 sleep → 첫 API 호출 5–10초.
+        // 토큰 있을 때만 keepalive ping. 비로그인 사용자는 Railway 안 깨움 → 비용 절감.
+        void apiHealth().catch(() => {})
         const me = await apiMe().catch(() => null)
         if (me) setUser(me)
       }
@@ -67,6 +67,17 @@ export default function App() {
       }
     }
     void init()
+  }, [])
+
+  // 앱 백그라운드 진입 시 큐에 남은 swipe를 즉시 push (3초 debounce 안 기다림)
+  // 사용자가 앱을 닫고 잊어버려도 데이터 유실 방지.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'background' || state === 'inactive') {
+        void flushPending().catch(() => {})
+      }
+    })
+    return () => sub.remove()
   }, [])
 
   const handleOnboardingDone = (p: UserPrefs) => {
@@ -92,6 +103,8 @@ export default function App() {
   const handleSkipAuth = () => setStep('main')
 
   const handleLogout = async () => {
+    // 큐에 쌓인 swipe를 마지막으로 한 번 push (다음 사용자가 못 보게 + 데이터 유실 방지)
+    await flushPending().catch(() => {})
     await apiLogout()
     // 다음 로그인 사용자가 이전 계정 데이터를 보지 않게 로컬 캐시 정리
     await clearLocalUserData()

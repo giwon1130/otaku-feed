@@ -56,7 +56,12 @@ React Native 0.81 + Expo 54 + TypeScript. AniList GraphQL + 라프텔 검색 API
 - **AniList 동시성 제한**: `client.ts`에 in-flight 5개 큐. HomeTab + 디테일 모달 + 검색이 동시에 polling되면 burst 429 가능 → 클라이언트 측 throttle.
 - **Railway keepalive**: `App.tsx` 부팅 시 `apiHealth()` fire-and-forget. 무료/Hobby 플랜은 5분 idle 후 sleep → 첫 사용자 액션 때 5–10초 cold start. 부팅 즉시 ping으로 회피.
 - **logger 래퍼 (`src/utils/logger.ts`)**: 지금은 console로 출력하지만 인터페이스(`logger.captureException(err, ctx)` 등)만 통일해두면 나중에 Sentry로 1파일 교체. 호출부는 그대로.
-- **백엔드 헬스 배지 (`useBackendHealth`)**: 30초 polling + AppState 'active' 복귀 시 즉시 ping. 헤더에 "동기화 중"(✅)/"오프라인"(⚠️) 노출. 로그인 상태일 때만 의미 있음 (로컬 모드는 백엔드 호출 안 함).
+- **백엔드 헬스 배지 (`useBackendHealth(enabled)`)**: 60초 polling + AppState 'active' 복귀 시 즉시 ping. 헤더에 "동기화 중"(✅)/"오프라인"(⚠️) 노출. **`enabled=false`(=비로그인)면 polling 자체 끔** → 로컬 모드 사용자는 Railway 호출 0.
+- **Railway 비용 절감 패턴**:
+  - `apiHealth` keepalive: 토큰 있을 때만 (비로그인 부팅은 깨우지 않음)
+  - `apiMe`: AsyncStorage 1시간 캐시. `force: true` 옵션으로 강제 새로고침
+  - `loadPrefs`/`loadSwipes`: `KEYS.syncMeta`에 마지막 동기화 시각 저장 → 5분 안이면 서버 GET 스킵 (다른 디바이스 변경은 5분 늦게 보임)
+  - **swipe 배치 푸시 (`flushPending`)**: addSwipe/removeSwipe는 로컬 즉시 반영 + 큐(`KEYS.pendingWrites`)에 쌓고 3초 debounce. 빠르게 5번 swipe = 5 RPC → 1 bulk RPC. bulk 미지원 시 개별 POST 폴백 (`Promise.allSettled`로 부분 성공 처리). AppState 'background' 진입 시 즉시 flush + 로그아웃 직전 flush.
 - **테스트 — `node:test` 호환성**: TS parameter property(`constructor(public readonly x)`)를 native `--experimental-strip-types`가 지원 안 함. `AniListError`도 명시적 필드로 작성. 그리고 런타임 import는 `'.ts'` 확장자 필수 (`import type`은 strip되어 무관).
 
 ## 공용 컴포넌트 (`src/components/shared/`)
@@ -261,7 +266,9 @@ cd .. && LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 \
 
 | 커밋 | 요약 |
 |------|------|
-| (HEAD) | 성능/운영: 번역 배치(40→1 RTT) + AniList SWR 캐시 + 동시성 제한 + Railway keepalive + DeepL 쿼터 추적 + logger 래퍼 + GitHub Actions CI |
+| (HEAD) | Railway 비용 절감: keepalive/health 조건부 + apiMe 1h 캐시 + prefs/swipes 5분 TTL + swipe 배치 push (debounce + bulk fallback) |
+| `b3a2b79` | 백엔드 헬스 배지(헤더) + msw로 AniList client 통합 테스트 |
+| `e9d16d5` | 성능/운영: 번역 배치(40→1 RTT) + AniList SWR 캐시 + 동시성 제한 + Railway keepalive + DeepL 쿼터 추적 + logger 래퍼 + GitHub Actions CI |
 | `80049ec` | JWT를 expo-secure-store(keychain)로 이전 + expo-notifications 추가 (kakao/google native 요구) |
 | `6ff66d7` | LoadingBar 컴포넌트 + 라프텔 한국 출시명 보강 + 번역 캐시 무효화 (tl3→tl4) + AniList synonyms 우선 |
 | `2b8f583` | stub 진입 시 디테일 모달 상단 로딩 인디케이터 추가 |

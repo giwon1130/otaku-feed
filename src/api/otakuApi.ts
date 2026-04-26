@@ -35,6 +35,8 @@ export async function clearToken(): Promise<void> {
   await SecureStore.deleteItemAsync(TOKEN_KEY)
   // 혹시 남은 레거시 키도 청소
   await AsyncStorage.removeItem(LEGACY_TOKEN_KEY).catch(() => {})
+  // /me 캐시도 비움 — 다음 로그인 시 fresh 호출
+  await AsyncStorage.removeItem(ME_CACHE_KEY).catch(() => {})
 }
 
 // ── HTTP 헬퍼 ─────────────────────────────────────────────────────────────────
@@ -87,8 +89,26 @@ export async function apiLogin(email: string, password: string): Promise<AuthRes
   return res
 }
 
-export async function apiMe(): Promise<AuthResponse> {
-  return request<AuthResponse>('GET', '/auth/me')
+// /auth/me 결과 1시간 캐시 — 토큰 유효성 확인은 첫 보호된 API 호출 시 어차피 검증됨.
+// 매 부팅마다 호출 = Railway 비용 낭비.
+const ME_CACHE_KEY = 'otaku:meCache'
+const ME_CACHE_TTL = 60 * 60 * 1000   // 1h
+
+export async function apiMe(opts?: { force?: boolean }): Promise<AuthResponse> {
+  if (!opts?.force) {
+    const raw = await AsyncStorage.getItem(ME_CACHE_KEY)
+    if (raw) {
+      try {
+        const { value, ts } = JSON.parse(raw) as { value: AuthResponse; ts: number }
+        if (Date.now() - ts < ME_CACHE_TTL) return value
+      } catch {
+        // 손상된 캐시는 무시
+      }
+    }
+  }
+  const me = await request<AuthResponse>('GET', '/auth/me')
+  await AsyncStorage.setItem(ME_CACHE_KEY, JSON.stringify({ value: me, ts: Date.now() }))
+  return me
 }
 
 export async function apiLogout(): Promise<void> {
@@ -127,6 +147,16 @@ export async function apiSaveSwipe(animeId: number, result: 'like' | 'dislike' |
 
 export async function apiDeleteSwipe(animeId: number): Promise<void> {
   await request<unknown>('DELETE', `/swipes/${animeId}`)
+}
+
+/**
+ * 여러 swipe를 한 번에 푸시. 백엔드가 /swipes/bulk를 지원하면 1 RPC로 처리.
+ * 미지원(404)이면 호출자가 catch해서 개별 POST로 폴백.
+ */
+export async function apiSaveSwipesBulk(
+  swipes: { animeId: number; result: 'like' | 'dislike' | 'skip' }[],
+): Promise<void> {
+  await request<unknown>('POST', '/swipes/bulk', { swipes })
 }
 
 // ── Prefs ─────────────────────────────────────────────────────────────────────
