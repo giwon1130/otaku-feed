@@ -325,6 +325,9 @@ export function ExploreTab({ onAnimePress }: Props) {
           maxToRenderPerBatch={12}
           windowSize={7}
           removeClippedSubviews
+          // 검색 input이 ListHeaderComponent에 있어서 키보드 뜬 상태로 결과 탭하면
+          // 첫 탭이 키보드만 닫혔음 → 'handled'로 첫 탭에 결과 진입까지 같이 처리.
+          keyboardShouldPersistTaps="handled"
           ListHeaderComponent={header}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#9f67ff" />
