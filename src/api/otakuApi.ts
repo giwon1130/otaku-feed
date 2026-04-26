@@ -129,8 +129,8 @@ export async function apiKakaoOAuth(accessToken: string): Promise<AuthResponse> 
 
 // ── Swipes ────────────────────────────────────────────────────────────────────
 
+// 백엔드는 id 필드를 응답에서 제외 (클라가 안 씀, egress 절감).
 export type SwipeResponse = {
-  id: string
   animeId: number
   result: string
   swipedAt: string
