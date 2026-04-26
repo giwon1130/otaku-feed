@@ -21,6 +21,8 @@ import { Toast } from '../components/Toast'
 import { useToast } from '../hooks/useToast'
 import { STRINGS } from '../i18n/strings'
 import { logger } from '../utils/logger'
+
+// 디버깅: import { logger } 후 console에서 [time] explore.loadRanking · NNNms 형태로 모니터링
 import { hapticLight, hapticMedium } from '../utils/haptics'
 import type { Anime, RankingSort, SwipeResult } from '../types'
 
@@ -107,20 +109,39 @@ export function ExploreTab({ onAnimePress }: Props) {
         ? fetchByGenres([genre], p, PER_PAGE)
         : fetchRanking(s, p, PER_PAGE)
 
-      const [data, sm] = await Promise.all([
-        fetchPromise,
-        p === 1 ? getSwipeMap() : Promise.resolve(swipeMap),
-      ])
-      const translated = await translateAnimeList(data)
+      const [data, sm] = await logger.time(
+        `explore.loadRanking[${genre ?? s}]`,
+        () => Promise.all([
+          fetchPromise,
+          p === 1 ? getSwipeMap() : Promise.resolve(swipeMap),
+        ]),
+        { page: p },
+      )
 
+      // 영어 제목 그대로 즉시 렌더 → 사용자가 콘텐츠 빨리 봄
+      // (synonyms에서 한국명 받은 항목은 mapAnime에서 이미 한국어로 들어옴)
       if (append) {
-        setResults((prev) => [...prev, ...translated])
+        setResults((prev) => [...prev, ...data])
       } else {
-        setResults(translated)
+        setResults(data)
         setSwipeMap(sm)
       }
       setHasMore(data.length === PER_PAGE)
       setPage(p)
+
+      // 번역은 백그라운드 → 도착하면 swap. 메모리 캐시 hit이면 거의 즉시.
+      void translateAnimeList(data).then((translated) => {
+        setResults((prev) => {
+          if (append) {
+            // append는 prev 끝에 영어로 들어가있음 → 같은 길이만큼 뒤에서 교체
+            const head = prev.slice(0, prev.length - translated.length)
+            return [...head, ...translated]
+          }
+          // 첫 페이지: id 매칭으로 안전 교체 (이 사이 setResults가 또 호출됐을 수도)
+          const byId = new Map(translated.map((a) => [a.id, a]))
+          return prev.map((a) => byId.get(a.id) ?? a)
+        })
+      })
     } catch (e) {
       const msg = e instanceof Error ? e.message : STRINGS.errors.rankingFailed
       toast.show(msg, 'error')
@@ -142,9 +163,14 @@ export function ExploreTab({ onAnimePress }: Props) {
     const t = setTimeout(async () => {
       setLoading(true)
       try {
-        setResults(await translateAnimeList(await searchAnime(text.trim())))
+        const raw = await searchAnime(text.trim())
+        setResults(raw)                  // 영어로 즉시 렌더
         setHasMore(false)
         void saveHistory(text.trim())
+        void translateAnimeList(raw).then((translated) => {
+          const byId = new Map(translated.map((a) => [a.id, a]))
+          setResults((prev) => prev.map((a) => byId.get(a.id) ?? a))
+        })
       } catch (e) {
         const msg = e instanceof Error ? e.message : STRINGS.errors.searchFailed
         toast.show(msg, 'error')

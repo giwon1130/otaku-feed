@@ -1,6 +1,7 @@
 import type { Anime } from '../../types'
 import { query } from './client'
-import { ANIME_FIELDS } from './fragments'
+// 검색 결과도 카드 리스트만 → 슬림 fragment
+import { ANIME_FIELDS_LIST as ANIME_FIELDS } from './fragments'
 import { mapAnime, type RawMedia } from './mappers'
 
 const HANGUL_RE = /[\uac00-\ud7af]/

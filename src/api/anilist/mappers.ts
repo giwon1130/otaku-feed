@@ -6,22 +6,24 @@ type RawTitle = { english: string | null; romaji: string; native: string }
 type RawCover = { large: string; extraLarge: string }
 type RawStudios = { nodes: { name: string }[] }
 
+// 슬림 fragment(ANIME_FIELDS_LIST)에선 description/studios/banner/source가 빠짐 → optional.
+// 풀 fragment(ANIME_FIELDS)에선 모두 포함.
 export type RawMedia = {
   id: number
   title: RawTitle
   synonyms: string[] | null
   coverImage: RawCover
-  bannerImage: string | null
+  bannerImage?: string | null
   averageScore: number | null
   episodes: number | null
   status: AnimeStatus
   season: AnimeSeason | null
   seasonYear: number | null
   genres: string[]
-  description: string | null
-  studios: RawStudios
+  description?: string | null
+  studios?: RawStudios
   popularity: number | null
-  source: string | null
+  source?: string | null
 }
 
 const HANGUL_RE = /[\uac00-\ud7af]/
@@ -64,7 +66,7 @@ export function mapAnime(raw: RawMedia): Anime {
     seasonYear: raw.seasonYear ?? null,
     genres: raw.genres ?? [],
     description: (raw.description ?? '').replace(/<[^>]*>/g, ''),
-    studios: raw.studios.nodes.map((s) => s.name),
+    studios: raw.studios?.nodes.map((s) => s.name) ?? [],
     popularity: raw.popularity ?? 0,
     source: raw.source ?? 'OTHER',
   }

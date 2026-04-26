@@ -44,4 +44,27 @@ export const logger = {
     console.error(`[exception] ${e.message}`, { ...ctx, stack: e.stack })
     // TODO(Sentry): Sentry.captureException(e, { extra: ctx })
   },
+
+  /**
+   * 비동기 함수 실행 시간 측정.
+   * 프로덕션엔 영향 없음 (Sentry 도입 시 transaction으로 교체 예정).
+   *
+   * 사용:
+   *   const result = await logger.time('home.load', () => load())
+   *   const data = await logger.time('anilist.trending', () => fetchTrending(1, 20), { perPage: 20 })
+   */
+  async time<T>(label: string, fn: () => Promise<T>, ctx?: LogContext): Promise<T> {
+    if (!__DEV__) return fn()
+    const start = Date.now()
+    try {
+      const value = await fn()
+      const ms = Date.now() - start
+      console.log(`[time] ${label} · ${ms}ms`, ctx ?? '')
+      return value
+    } catch (e) {
+      const ms = Date.now() - start
+      console.warn(`[time] ${label} FAILED · ${ms}ms`, { ...ctx, err: e })
+      throw e
+    }
+  },
 }

@@ -1,32 +1,77 @@
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import type { Anime, ExternalLink, RelationType, SeriesEntry } from '../../types'
 import { findBestLaftelMatch, laftelItemUrl, searchLaftel } from '../laftel'
 import { GROUP_ORDER, seriesGroupKey } from '../../utils/seriesGroup'
 import { query } from './client'
-import { ANIME_FIELDS } from './fragments'
+import { ANIME_FIELDS, ANIME_FIELDS_LIST } from './fragments'
 import { mapAnime, mapSeriesEntry, type RawMedia, type RawSeriesNode } from './mappers'
 
 // ── 단일 조회 ─────────────────────────────────────────────────────────────
 
-// 경량 LRU(시간 기반 만료) — MyListTab/HomeTab/Detail 모달이 같은 ID를 반복 조회.
-// AniList 레이트리밋 회피 + 모달 재진입 시 즉시 enriched 표시.
+// ── 단건 조회 캐시 (2-tier) ───────────────────────────────────────────────
+// L1: 인메모리 LRU (5분 TTL) — 같은 세션에서 모달 재진입/탭 간 공유
+// L2: AsyncStorage 영구 (24시간 TTL) — 앱 재시작 후 두 번째 진입에서 즉시 표시
+//
+// 디테일 모달은 부팅 후 처음 보면 ~700ms (AniList) + 모달 fetch 4개 동시.
+// L2가 hit하면 모달이 즉시 채워진 채로 열림 → 백그라운드에서 fresh 갱신.
 type CacheEntry = { value: Anime | null; expiresAt: number }
 const ANIME_CACHE = new Map<number, CacheEntry>()
-const CACHE_TTL_MS = 5 * 60 * 1000        // 5분 — fresh 데이터와 절충
-const CACHE_MAX = 200                     // 메모리 보호 캡
+const CACHE_TTL_MS = 5 * 60 * 1000        // L1 5분
+const CACHE_MAX = 200                     // L1 메모리 캡
+const PERSIST_TTL_MS = 24 * 60 * 60 * 1000   // L2 24시간 (description 등은 거의 안 바뀜)
+const PERSIST_PREFIX = 'anime:'
 
-function setCache(id: number, value: Anime | null) {
+type PersistEntry = { value: Anime | null; storedAt: number }
+
+function setMemCache(id: number, value: Anime | null) {
   if (ANIME_CACHE.size >= CACHE_MAX) {
-    // 가장 먼저 들어간 것부터 제거 (Map은 insertion order 유지)
     const first = ANIME_CACHE.keys().next().value
     if (first !== undefined) ANIME_CACHE.delete(first)
   }
   ANIME_CACHE.set(id, { value, expiresAt: Date.now() + CACHE_TTL_MS })
 }
 
-export async function fetchAnimeById(id: number): Promise<Anime | null> {
-  const cached = ANIME_CACHE.get(id)
-  if (cached && cached.expiresAt > Date.now()) return cached.value
+async function getPersistCache(id: number): Promise<Anime | null | undefined> {
+  try {
+    const raw = await AsyncStorage.getItem(`${PERSIST_PREFIX}${id}`)
+    if (!raw) return undefined
+    const entry = JSON.parse(raw) as PersistEntry
+    if (Date.now() - entry.storedAt > PERSIST_TTL_MS) return undefined
+    return entry.value
+  } catch {
+    return undefined
+  }
+}
 
+async function setPersistCache(id: number, value: Anime | null): Promise<void> {
+  try {
+    await AsyncStorage.setItem(
+      `${PERSIST_PREFIX}${id}`,
+      JSON.stringify({ value, storedAt: Date.now() } satisfies PersistEntry),
+    )
+  } catch {
+    // 실패해도 메모리 캐시는 살아있으니 무시
+  }
+}
+
+export async function fetchAnimeById(id: number): Promise<Anime | null> {
+  // L1
+  const memHit = ANIME_CACHE.get(id)
+  if (memHit && memHit.expiresAt > Date.now()) return memHit.value
+
+  // L2 — 디스크 hit이면 즉시 반환 + 백그라운드 fresh
+  const persistHit = await getPersistCache(id)
+  if (persistHit !== undefined) {
+    setMemCache(id, persistHit)
+    void refreshAnimeInBackground(id)
+    return persistHit
+  }
+
+  // 미스 → 네트워크
+  return fetchAndCache(id)
+}
+
+async function fetchAndCache(id: number): Promise<Anime | null> {
   const data = await query<{ Media: RawMedia | null }>(`
     query($id: Int) {
       Media(id: $id, type: ANIME) {
@@ -35,13 +80,28 @@ export async function fetchAnimeById(id: number): Promise<Anime | null> {
     }
   `, { id })
   const result = data.Media ? mapAnime(data.Media) : null
-  setCache(id, result)
+  setMemCache(id, result)
+  void setPersistCache(id, result)
   return result
 }
 
-/** 테스트/로그아웃/수동 새로고침에서 사용. */
+// fire-and-forget 백그라운드 새로고침 — 사용자에게 보이지 않음, 캐시만 갱신
+async function refreshAnimeInBackground(id: number): Promise<void> {
+  try {
+    await fetchAndCache(id)
+  } catch {
+    // fresh 실패해도 캐시 데이터로 동작 — 무시
+  }
+}
+
+/** 테스트/로그아웃/수동 새로고침에서 사용. L1 + L2 모두 비움. */
 export function clearAnimeCache(): void {
   ANIME_CACHE.clear()
+  // L2는 비동기지만 await 안 함 (호출자도 비동기 보장 안 함)
+  void AsyncStorage.getAllKeys().then((keys) => {
+    const animeKeys = keys.filter((k) => k.startsWith(PERSIST_PREFIX))
+    if (animeKeys.length > 0) void AsyncStorage.removeMany(animeKeys)
+  })
 }
 
 // ── 스트리밍 링크 ──────────────────────────────────────────────────────────
@@ -262,7 +322,7 @@ export async function fetchRecommendations(id: number, perPage = 8): Promise<Ani
         recommendations(sort: RATING_DESC, perPage: $perPage) {
           nodes {
             mediaRecommendation {
-              ${ANIME_FIELDS}
+              ${ANIME_FIELDS_LIST}
             }
           }
         }

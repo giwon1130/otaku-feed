@@ -1,6 +1,7 @@
 import type { Anime, AnimeSeason, RankingSort } from '../../types'
 import { query } from './client'
-import { ANIME_FIELDS } from './fragments'
+// 리스트 화면(트렌딩/랭킹/장르/시즌/취향)은 카드만 그리니 슬림 fragment로 응답 ~50% 절감
+import { ANIME_FIELDS_LIST as ANIME_FIELDS } from './fragments'
 import { mapAnime, type RawMedia } from './mappers'
 
 type PageResponse = { Page: { media: RawMedia[] } }

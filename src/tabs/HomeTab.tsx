@@ -159,12 +159,12 @@ export function HomeTab({ favoriteGenres, onAnimePress, reloadToken = 0 }: Props
   const load = async () => {
     try {
     // SWR: trending/seasonal은 사용자가 가장 먼저 보는 부분 → 캐시 즉시 표시 + 백그라운드 갱신
-    const [trendingSwr, seasonalSwr, sm, recGenres] = await Promise.all([
+    const [trendingSwr, seasonalSwr, sm, recGenres] = await logger.time('home.swrPrimary', () => Promise.all([
       swr('home:trending', () => fetchTrending(1, 20).then(translateAnimeList)),
       swr('home:seasonal', () => fetchCurrentSeason(1, 20).then(translateAnimeList)),
       getSwipeMap(),
       pickRecommendedGenres(favoriteGenres, 3),
-    ])
+    ]))
     if (trendingSwr.cached) setTrending(trendingSwr.cached)
     if (seasonalSwr.cached) setSeasonal(seasonalSwr.cached)
     setSwipeMap(sm)
@@ -174,11 +174,13 @@ export function HomeTab({ favoriteGenres, onAnimePress, reloadToken = 0 }: Props
     void seasonalSwr.fresh.then((v) => { if (v) setSeasonal(v) })
 
     // 맞춤 피드: 추천 장르 기반, 이미 swipe한 건 제외
+    // → 영어 우선 렌더 + 번역 swap (체감 ~500ms 빠름)
     const seenIds = new Set(Object.keys(sm).map(Number))
     if (recGenres.length > 0) {
       const fy = await fetchByGenres(recGenres, 1, 30)
       const filtered = fy.filter((a) => !seenIds.has(a.id)).slice(0, 12)
-      setForYou(await translateAnimeList(filtered))
+      setForYou(filtered)
+      void translateAnimeList(filtered).then(setForYou)
     } else {
       setForYou([])
     }
@@ -214,21 +216,33 @@ export function HomeTab({ favoriteGenres, onAnimePress, reloadToken = 0 }: Props
         if (fallback) pickedAnchors.push(fallback)
       }
 
-      // anchor마다 직렬로 fetch+translate하면 N×라운드트립 → 전부 병렬화
+      // anchor마다 병렬로 fetch + 영어 우선 렌더 + 번역 백그라운드 swap.
       const setsRaw = await Promise.all(
         pickedAnchors.map(async (anchor) => {
-          const [tAnchorList, recs] = await Promise.all([
-            translateAnimeList([anchor]),
-            fetchRecommendations(anchor.id, 12).catch(() => []),
-          ])
+          const recs = await fetchRecommendations(anchor.id, 12).catch(() => [])
           const filteredRecs = recs
             .filter((a) => !seenIds.has(a.id) && !usedIds.has(a.id))
             .slice(0, 12)
-          const tRecs = await translateAnimeList(filteredRecs)
-          return { anchor: tAnchorList[0]!, recs: tRecs }
+          return { anchor, recs: filteredRecs }
         }),
       )
-      setBecauseLikedSets(setsRaw.filter((s) => s.recs.length > 0))
+      const visibleSets = setsRaw.filter((s) => s.recs.length > 0)
+      setBecauseLikedSets(visibleSets)   // 영어로 즉시
+      // 번역은 set 단위 백그라운드, 도착하는 대로 부분 업데이트
+      visibleSets.forEach((s, idx) => {
+        void Promise.all([
+          translateAnimeList([s.anchor]),
+          translateAnimeList(s.recs),
+        ]).then(([tAnchorList, tRecs]) => {
+          setBecauseLikedSets((prev) => {
+            const copy = [...prev]
+            if (copy[idx]?.anchor.id === s.anchor.id) {
+              copy[idx] = { anchor: tAnchorList[0]!, recs: tRecs }
+            }
+            return copy
+          })
+        })
+      })
     } else {
       setBecauseLikedSets([])
     }

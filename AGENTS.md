@@ -55,7 +55,10 @@ React Native 0.81 + Expo 54 + TypeScript. AniList GraphQL + 라프텔 검색 API
 - **AniList SWR (`api/anilist/swr.ts`)**: trending/seasonal 같은 첫 화면 데이터를 AsyncStorage에 영구 저장. 부팅 시 캐시 즉시 렌더 + 백그라운드 fetch → 두 번째 부팅부터 체감 즉시. 호출 패턴: `swr(key, fetcher).then(({cached, fresh}) => {...})`. 로그아웃 시 `clearSwrCache()`로 비움.
 - **AniList 동시성 제한**: `client.ts`에 in-flight 5개 큐. HomeTab + 디테일 모달 + 검색이 동시에 polling되면 burst 429 가능 → 클라이언트 측 throttle.
 - **Railway keepalive**: `App.tsx` 부팅 시 `apiHealth()` fire-and-forget. 무료/Hobby 플랜은 5분 idle 후 sleep → 첫 사용자 액션 때 5–10초 cold start. 부팅 즉시 ping으로 회피.
-- **logger 래퍼 (`src/utils/logger.ts`)**: 지금은 console로 출력하지만 인터페이스(`logger.captureException(err, ctx)` 등)만 통일해두면 나중에 Sentry로 1파일 교체. 호출부는 그대로.
+- **logger 래퍼 (`src/utils/logger.ts`)**: 지금은 console로 출력하지만 인터페이스(`logger.captureException(err, ctx)` 등)만 통일해두면 나중에 Sentry로 1파일 교체. 호출부는 그대로. `logger.time(label, fn)`은 `__DEV__`에서만 시간 측정 로그.
+- **AniList fragment 분리**: `ANIME_FIELDS` (디테일용 풀) + `ANIME_FIELDS_LIST` (카드용 슬림 — description/studios/banner/source 빼고 ~50% 응답 절감). discovery/search/recommendations는 LIST, fetchAnimeById는 FULL. mapAnime이 빠진 필드를 안전하게 폴백 (`studios?.nodes ?? []` 등).
+- **render-then-translate**: ExploreTab/HomeTab에서 AniList 응답 받자마자 영어 그대로 setResults → 그 다음 `translateAnimeList`를 백그라운드로 부르고 도착하면 id 매칭으로 swap. 체감 빈 화면 대기 ~500ms 단축. (synonyms로 한국명 받은 항목은 mapAnime에서 이미 한국어라 swap 안 일어남.)
+- **fetchAnimeById 2-tier 캐시**: L1 인메모리 LRU (5분, 200캡) + L2 AsyncStorage 영구 (24시간, `anime:` 키). L2 hit 시 모달 즉시 표시 + 백그라운드 fresh. 디테일 모달 두 번째 진입부터 거의 즉시.
 - **백엔드 헬스 배지 (`useBackendHealth(enabled)`)**: 60초 polling + AppState 'active' 복귀 시 즉시 ping. 헤더에 "동기화 중"(✅)/"오프라인"(⚠️) 노출. **`enabled=false`(=비로그인)면 polling 자체 끔** → 로컬 모드 사용자는 Railway 호출 0.
 - **Railway 비용 절감 패턴**:
   - `apiHealth` keepalive: 토큰 있을 때만 (비로그인 부팅은 깨우지 않음)
