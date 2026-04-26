@@ -175,10 +175,10 @@ export function ExploreTab({ onAnimePress }: Props) {
     return <TrendingUp size={13} color="#06b6d4" strokeWidth={2.5} />
   }
 
-  return (
-    <>
-    <View style={{ flex: 1 }}>
-      <View style={{ padding: 14, gap: 10 }}>
+  // 헤더 영역 (검색 + 정렬/장르 필터)을 FlatList의 ListHeaderComponent로 빼서
+  // 전체 스크롤이 한 덩어리로 움직이게 함. 이전엔 헤더 fix + 리스트만 스크롤.
+  const header = (
+    <View style={{ padding: 14, gap: 10 }}>
         {/* 검색 */}
         <View style={styles.card}>
           <View style={styles.cardTitleRow}>
@@ -311,19 +311,21 @@ export function ExploreTab({ onAnimePress }: Props) {
             />
           </View>
         ) : null}
-      </View>
+    </View>
+  )
 
-      {loading ? (
-        <SkeletonRows />
-      ) : (
+  return (
+    <>
+    <View style={{ flex: 1 }}>
         <FlatList
-          data={results}
+          data={loading ? [] : results}
           keyExtractor={(item) => String(item.id)}
           contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 40, gap: 8 }}
           initialNumToRender={12}
           maxToRenderPerBatch={12}
           windowSize={7}
           removeClippedSubviews
+          ListHeaderComponent={header}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#9f67ff" />
           }
@@ -373,15 +375,18 @@ export function ExploreTab({ onAnimePress }: Props) {
             )
           }}
           ListEmptyComponent={
-            <View style={styles.emptyState}>
-              <Text style={{ fontSize: 40 }}>🔍</Text>
-              <Text style={styles.emptyStateText}>
-                {searchQuery ? `"${searchQuery}"에 해당하는 애니가 없어.` : '결과가 없어.'}
-              </Text>
-            </View>
+            loading ? (
+              <SkeletonRows />
+            ) : (
+              <View style={styles.emptyState}>
+                <Text style={{ fontSize: 40 }}>🔍</Text>
+                <Text style={styles.emptyStateText}>
+                  {searchQuery ? `"${searchQuery}"에 해당하는 애니가 없어.` : '결과가 없어.'}
+                </Text>
+              </View>
+            )
           }
         />
-      )}
     </View>
     <Toast visible={toast.visible} message={toast.message} type={toast.type} />
     </>
