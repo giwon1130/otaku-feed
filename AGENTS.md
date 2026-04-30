@@ -94,7 +94,10 @@ React Native 0.81 + Expo 54 + TypeScript. AniList GraphQL + 라프텔 검색 API
 ## 인증
 
 - 카카오 / 구글 SSO (`@react-native-kakao/user`, `@react-native-google-signin/google-signin`).
-- Expo Go에선 안 돼. **dev client 빌드 필요** (`npx expo run:ios --device`).
+- Expo Go에선 안 돼. **dev client 빌드 필요**.
+  - 빠른 디버깅: `npx expo run:ios --device "<UDID>" --port 8082` (7일 무료 cert)
+  - 정식 배포/공유: **EAS Build** (Apple Developer 유료 가입됨, 1년 cert) — `npm run build:dev|preview|prod`
+- 자세한 배포 절차: `docs/운영/배포.md` "EAS Build" 섹션
 - JWT 저장: `expo-secure-store` (iOS Keychain / Android Keystore). 키는 `otaku_jwt` (콜론 허용 안 됨). 옛 AsyncStorage 키(`otaku:jwt`)가 남아 있으면 `getToken` 첫 호출 시 자동으로 SecureStore로 옮기고 삭제 (1회 마이그레이션). 토큰은 디바이스 백업/탈옥에서 보호됨.
 
 ## 개발 환경

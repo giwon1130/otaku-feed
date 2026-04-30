@@ -1,0 +1,48 @@
+{
+  "cli": {
+    "version": ">= 18.9.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "//": "프로필 설명",
+    "//development": "Metro 연결 dev client. 개발 중 폰에 깔아두고 JS hot reload. simulator/device 둘 다.",
+    "//preview": "내부 테스트 .ipa. TestFlight 또는 ad-hoc(특정 UDID 폰들). Production 빌드지만 release 채널 분리 가능.",
+    "//production": "App Store 제출용. autoIncrement로 빌드 번호 자동 +1.",
+
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "simulator": false,
+        "resourceClass": "m-medium"
+      },
+      "channel": "development"
+    },
+
+    "preview": {
+      "distribution": "internal",
+      "ios": {
+        "simulator": false,
+        "resourceClass": "m-medium"
+      },
+      "channel": "preview",
+      "autoIncrement": "buildNumber"
+    },
+
+    "production": {
+      "ios": {
+        "resourceClass": "m-medium"
+      },
+      "channel": "production",
+      "autoIncrement": "buildNumber"
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "//": "ascAppId/appleId는 첫 submit 시 EAS가 자동 채워줌",
+        "appleTeamId": "776H9NV6HT"
+      }
+    }
+  }
+}
