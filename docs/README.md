@@ -42,7 +42,12 @@ AniList 카탈로그 + 라프텔 시청 가능 정보를 보여준다.
 3. [`운영/환경변수.md`](운영/환경변수.md)
 4. [`운영/장애대응.md`](운영/장애대응.md)
 5. [`운영/보안.md`](운영/보안.md)
-6. [`운영/비용최적화.md`](운영/비용최적화.md)
+6. [`운영/개인정보처리방침.md`](운영/개인정보처리방침.md) — 호스팅/변경 절차
+7. [`운영/비용최적화.md`](운영/비용최적화.md)
+
+### 📜 Legal (사용자/Apple 심사용)
+- [Privacy Policy 한국어](legal/privacy-ko.md) → 공개 URL: `https://giwon1130.github.io/otaku-feed/legal/privacy-ko`
+- [Privacy Policy English](legal/privacy-en.md)
 
 ### 🧪 QA
 [`품질/테스트전략.md`](품질/테스트전략.md)
