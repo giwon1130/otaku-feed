@@ -1,7 +1,11 @@
 # Otaku Feed — Agent Notes
 
 React Native 0.81 + Expo 54 + TypeScript. AniList GraphQL + 라프텔 검색 API 기반 한국 사용자용 애니 추천 피드 앱.
-백엔드 서버는 별도 (`otaku-feed-api`, Railway 배포 — 인증/취향 동기화).
+
+> ⚠️ **백엔드(`otaku-feed-api`, Railway) 종료됨** (2026-04, 비용 문제).
+> 클라이언트는 로컬-only 모드로 동작. `App.tsx` + `src/storage.ts`의 `BACKEND_ENABLED = false`.
+> 백엔드 호출 코드는 보존(향후 Supabase 등 이전 대비), 호출은 모두 no-op.
+> 자세한 내용: [`docs/운영/서비스종료.md`](docs/운영/서비스종료.md)
 
 ## 도메인 한 줄
 

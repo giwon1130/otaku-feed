@@ -25,6 +25,11 @@ const TABS: Array<{ key: TabKey; label: string; Icon: typeof Home }> = [
   { key: 'mylist',  label: '내 목록',  Icon: Heart },
 ]
 
+// 백엔드(otaku-feed-api / Railway)는 비용 문제로 종료됨 — 로컬-only 모드.
+// 'auth' 단계는 흐름에서 제외. 사용자 메뉴의 로그인 버튼도 숨김.
+// 백엔드 의존 코드는 보존(향후 Supabase 등으로 이전 가능성 대비) 하되 호출 X.
+const BACKEND_ENABLED = false
+
 type AppStep = 'loading' | 'onboarding' | 'taste' | 'auth' | 'main'
 
 export default function App() {
@@ -38,20 +43,20 @@ export default function App() {
   const [editingTaste, setEditingTaste] = useState(false)
   // 취향/장르 변경 후 HomeTab을 강제 리로드하기 위한 토큰. bump하면 피드 다시 로드.
   const [homeReloadToken, setHomeReloadToken] = useState(0)
-  // 비로그인(로컬 모드) 사용자는 백엔드 호출 안 함 → polling 자체를 끔 (Railway 비용 0)
-  const backendStatus = useBackendHealth(!!user)
+  // 백엔드 종료됨 — health polling 자체 끔
+  const backendStatus = useBackendHealth(BACKEND_ENABLED && !!user)
 
   // 앱 시작 시 토큰·취향 복원
   useEffect(() => {
     const init = async () => {
-      // 저장된 토큰 확인 — 토큰이 있을 때만 백엔드 호출 (비로그인은 Railway 호출 0)
-      const token = await getToken()
-      if (token) {
-        // Railway 무료/Hobby 플랜은 5분 idle 후 컨테이너 sleep → 첫 API 호출 5–10초.
-        // 토큰 있을 때만 keepalive ping. 비로그인 사용자는 Railway 안 깨움 → 비용 절감.
-        void apiHealth().catch(() => {})
-        const me = await apiMe().catch(() => null)
-        if (me) setUser(me)
+      // 백엔드 종료됨 — 토큰/me/health 호출 모두 스킵
+      if (BACKEND_ENABLED) {
+        const token = await getToken()
+        if (token) {
+          void apiHealth().catch(() => {})
+          const me = await apiMe().catch(() => null)
+          if (me) setUser(me)
+        }
       }
 
       const loadedPrefs = await loadPrefs()
@@ -90,8 +95,8 @@ export default function App() {
     const next: UserPrefs = { ...(prefs ?? { favoriteGenres: [], onboardingDone: true }), tasteOnboardingDone: true }
     setPrefs(next)
     await savePrefs(next)
-    // 이미 로그인된 상태면 auth 스킵 → 바로 메인
-    setStep(user ? 'main' : 'auth')
+    // 백엔드 종료됨 — auth 단계 건너뛰고 바로 메인
+    setStep(BACKEND_ENABLED && !user ? 'auth' : 'main')
   }
 
   const handleAuthDone = async (authUser: AuthResponse) => {
@@ -233,31 +238,27 @@ export default function App() {
               <Text style={styles.headerTitle}>애니 추천 피드</Text>
             </View>
 
-            {/* 유저 상태 버튼 */}
+            {/* 메뉴 버튼 (장르 재선택 / 취향 재분석) — 백엔드 종료로 로그인 표기는 제거 */}
             <Pressable
               onPress={() => setShowUserMenu((v) => !v)}
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: 6,
-                backgroundColor: user ? 'rgba(159,103,255,0.15)' : 'rgba(255,255,255,0.08)',
+                backgroundColor: 'rgba(255,255,255,0.08)',
                 borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6,
                 borderWidth: 1,
-                borderColor: user ? 'rgba(159,103,255,0.3)' : 'rgba(255,255,255,0.1)',
+                borderColor: 'rgba(255,255,255,0.1)',
               }}
             >
-              <User size={13} color={user ? '#9f67ff' : '#6b6b99'} strokeWidth={2.5} />
-              <Text style={{ color: user ? '#9f67ff' : '#6b6b99', fontSize: 11, fontWeight: '800' }}>
-                {user ? user.nickname : '로그인'}
-              </Text>
+              <User size={13} color="#a8a8cc" strokeWidth={2.5} />
+              <Text style={{ color: '#a8a8cc', fontSize: 11, fontWeight: '800' }}>메뉴</Text>
             </Pressable>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <Text style={styles.headerSubtitle}>
-              {user
-                ? `${prefs?.favoriteGenres.length ?? 0}개 장르 · `
-                : `${prefs?.favoriteGenres.length ?? 0}개 장르 · 로컬 모드`}
+              {`${prefs?.favoriteGenres.length ?? 0}개 장르 · 로컬 모드`}
             </Text>
-            {/* 백엔드 헬스 배지 — 로그인 상태일 때만 의미 있음 (로컬 모드면 백엔드 호출 없음) */}
-            {user ? (
+            {/* 백엔드 종료됨 — 헬스 배지 안 보임 */}
+            {BACKEND_ENABLED && user ? (
               backendStatus === 'online' ? (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
                   <Cloud size={11} color="#a8a8cc" strokeWidth={2.5} />
@@ -317,25 +318,33 @@ export default function App() {
             </Text>
           </Pressable>
 
-          {user ? (
-            <Pressable
-              onPress={handleLogout}
-              style={{
-                flexDirection: 'row', alignItems: 'center', gap: 8,
-                padding: 12, borderRadius: 10,
-              }}
-            >
-              <LogOut size={14} color="#ef4444" strokeWidth={2.5} />
-              <Text style={{ color: '#ef4444', fontSize: 13, fontWeight: '700' }}>로그아웃</Text>
-            </Pressable>
+          {/* 백엔드 종료됨 — 로그인/로그아웃 버튼 숨김. 데이터는 디바이스 로컬에만 저장. */}
+          {BACKEND_ENABLED ? (
+            user ? (
+              <Pressable
+                onPress={handleLogout}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 8,
+                  padding: 12, borderRadius: 10,
+                }}
+              >
+                <LogOut size={14} color="#ef4444" strokeWidth={2.5} />
+                <Text style={{ color: '#ef4444', fontSize: 13, fontWeight: '700' }}>로그아웃</Text>
+              </Pressable>
+            ) : (
+              <Pressable
+                onPress={() => { setShowUserMenu(false); setStep('auth') }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12 }}
+              >
+                <User size={14} color="#9f67ff" strokeWidth={2.5} />
+                <Text style={{ color: '#9f67ff', fontSize: 13, fontWeight: '700' }}>로그인 / 회원가입</Text>
+              </Pressable>
+            )
           ) : (
-            <Pressable
-              onPress={() => { setShowUserMenu(false); setStep('auth') }}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12 }}
-            >
-              <User size={14} color="#9f67ff" strokeWidth={2.5} />
-              <Text style={{ color: '#9f67ff', fontSize: 13, fontWeight: '700' }}>로그인 / 회원가입</Text>
-            </Pressable>
+            <View style={{ padding: 12, gap: 4 }}>
+              <Text style={{ color: '#6b6b99', fontSize: 11, fontWeight: '700' }}>로컬 모드</Text>
+              <Text style={{ color: '#45456b', fontSize: 10 }}>좋아요/취향이 이 폰에만 저장됨</Text>
+            </View>
           )}
         </View>
       ) : null}

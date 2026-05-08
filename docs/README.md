@@ -7,7 +7,9 @@
 AniList 카탈로그 + 라프텔 시청 가능 정보를 보여준다.
 
 **클라이언트 기술 스택**: React Native 0.81 / Expo 54 / TypeScript / iOS·Android.
-**백엔드 (별도 레포)**: [otaku-feed-api](https://github.com/giwon1130/otaku-feed-api) — Spring Boot + Kotlin / PostgreSQL / Railway 배포.
+
+> ⚠️ **백엔드 종료** (2026-04, 비용 문제). 클라이언트는 로컬-only 모드로 동작. 자세한 내용: [`운영/서비스종료.md`](운영/서비스종료.md)
+> 백엔드 코드는 [otaku-feed-api](https://github.com/giwon1130/otaku-feed-api)에 보존됨 (재가동 시 참고).
 
 ## 역할별 진입 경로
 
@@ -45,6 +47,7 @@ AniList 카탈로그 + 라프텔 시청 가능 정보를 보여준다.
 6. [`운영/보안.md`](운영/보안.md)
 7. [`운영/개인정보처리방침.md`](운영/개인정보처리방침.md) — 호스팅/변경 절차
 8. [`운영/비용최적화.md`](운영/비용최적화.md)
+9. [`운영/서비스종료.md`](운영/서비스종료.md) — 백엔드 종료 + 재가동 절차
 
 ### 📜 Legal (사용자/Apple 심사용)
 - [Privacy Policy 한국어](legal/privacy-ko.md) → 공개 URL: `https://giwon1130.github.io/otaku-feed/legal/privacy-ko`

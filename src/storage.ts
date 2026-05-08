@@ -38,8 +38,13 @@ function isFresh(ts: number | undefined, ttl: number): boolean {
 }
 
 // ── 로그인 여부 확인 ──────────────────────────────────────────────────────────
+// 백엔드(otaku-feed-api / Railway) 비용 문제로 종료됨 → 항상 false.
+// 로그인/동기화/swipe push 모두 no-op. 데이터는 디바이스 로컬에만.
+// 향후 다른 백엔드(Supabase 등)로 이전 시 이 플래그 복구 + 호출 라인 살리면 됨.
+const BACKEND_ENABLED = false
 
 async function isLoggedIn(): Promise<boolean> {
+  if (!BACKEND_ENABLED) return false
   const token = await getToken()
   return !!token
 }
